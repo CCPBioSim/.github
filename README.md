@@ -45,8 +45,6 @@ flowchart LR
 
 Changes here reach every repository on its next Renovate run. Runtime dependencies, dev tools and GitHub Actions are each grouped, and every pull request carries the `dependencies` label alongside `ci`, `python`, `production-deps` or `dev-dependencies`.
 
-> **Open questions:** the preset path syntax above has not yet been verified on a repository. Renovate's `rangeStrategy: widen` has also not been shown to preserve lower bounds for PEP 621 dependencies, so review every pull request that changes a lower bound.
-
 **Community-health files.** Nothing to do. GitHub inherits them for repositories without their own copy, and a local file always wins.
 
 **Finding dependency updates across the organisation:**
