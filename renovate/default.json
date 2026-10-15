@@ -1,0 +1,22 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": [
+    "CCPBioSim baseline Renovate configuration.",
+    "Does not restrict enabledManagers. Assignees and reviewers are set in each repository."
+  ],
+  "extends": [
+    "config:best-practices",
+    "helpers:pinGitHubActionDigestsToSemver"
+  ],
+  "timezone": "Europe/London",
+  "schedule": ["after 9am and before 5pm every weekday"],
+  "dependencyDashboard": true,
+  "minimumReleaseAge": "3 days",
+  "packageRules": [
+    {
+      "matchManagers": ["github-actions"],
+      "groupName": "GitHub Actions",
+      "addLabels": ["ci", "dependencies"]
+    }
+  ]
+}

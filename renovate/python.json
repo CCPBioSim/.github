@@ -1,0 +1,23 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": [
+    "CCPBioSim Python preset for PEP 621 projects. Use together with renovate/default.",
+    "Runtime dependencies use the widen strategy. Its behaviour for lower bounds is not yet verified."
+  ],
+  "packageRules": [
+    {
+      "matchManagers": ["poetry", "pep621"],
+      "matchDepTypes": ["project.dependencies"],
+      "rangeStrategy": "widen",
+      "groupName": "Software Production Dependencies",
+      "addLabels": ["python", "production-deps", "dependencies"]
+    },
+    {
+      "matchManagers": ["poetry", "pep621"],
+      "matchDepTypes": ["project.optional-dependencies", "build-system.requires"],
+      "rangeStrategy": "replace",
+      "groupName": "Python CI and Dev Tools",
+      "addLabels": ["python", "dev-dependencies", "dependencies"]
+    }
+  ]
+}
