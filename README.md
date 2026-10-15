@@ -23,7 +23,8 @@ flowchart LR
 |---|---|
 | Renovate presets | Live |
 | Pull request and issue templates | Live |
-| `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md` defaults | Planned |
+| `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md` defaults | Live |
+| [Onboarding checklist](ONBOARDING.md) | Live |
 | Reusable CI and release workflows | Planned |
 | Copier-based project template | Under evaluation |
 | Branding consumption strategy | Under evaluation |
