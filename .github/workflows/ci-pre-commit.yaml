@@ -1,0 +1,50 @@
+name: CI pre-commit
+
+on:
+  workflow_call:
+    inputs:
+      python-version:
+        description: Python version used to run pre-commit.
+        type: string
+        default: "3.14"
+      extras:
+        description: Optional-dependency group that installs pre-commit and the hook requirements.
+        type: string
+        default: pre-commit
+      timeout-minutes:
+        description: Timeout for the job.
+        type: number
+        default: 15
+
+permissions:
+  contents: read
+
+jobs:
+  pre-commit:
+    name: Pre-commit
+    runs-on: ubuntu-24.04
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python ${{ inputs.python-version }}
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ inputs.python-version }}
+
+      - name: Install pre-commit dependencies
+        env:
+          EXTRAS: ${{ inputs.extras }}
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[${EXTRAS}]"
+
+      - name: Run pre-commit
+        run: |
+          pre-commit run --all-files || {
+            git status --short
+            git diff
+            exit 1
+          }
