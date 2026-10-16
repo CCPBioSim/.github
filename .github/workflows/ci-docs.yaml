@@ -1,0 +1,90 @@
+name: CI docs
+
+on:
+  workflow_call:
+    inputs:
+      python-versions:
+        description: JSON array of Python versions to build the docs with.
+        type: string
+        default: '["3.14"]'
+      os:
+        description: JSON array of runner labels to build the docs on.
+        type: string
+        default: '["ubuntu-24.04"]'
+      extras:
+        description: Optional-dependency group that installs the docs requirements.
+        type: string
+        default: docs
+      requirements-file:
+        description: Requirements file to install instead of the extras group. Leave empty to use the extras.
+        type: string
+        default: ""
+      docs-dir:
+        description: Directory containing the Sphinx Makefile.
+        type: string
+        default: docs
+      build-dir:
+        description: Sphinx build directory, relative to the docs directory.
+        type: string
+        default: _build
+      sphinx-opts:
+        description: Options passed to Sphinx as SPHINXOPTS. Use an empty string to allow warnings.
+        type: string
+        default: "-W --keep-going"
+      timeout-minutes:
+        description: Timeout for each job.
+        type: number
+        default: 30
+
+permissions:
+  contents: read
+
+jobs:
+  docs:
+    name: Docs (${{ matrix.os }}, py${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(inputs.os) }}
+        python-version: ${{ fromJSON(inputs.python-versions) }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install docs dependencies
+        shell: bash
+        env:
+          EXTRAS: ${{ inputs.extras }}
+          REQUIREMENTS_FILE: ${{ inputs.requirements-file }}
+        run: |
+          python -m pip install --upgrade pip
+          if [ -n "${REQUIREMENTS_FILE}" ]; then
+            python -m pip install -r "${REQUIREMENTS_FILE}"
+          else
+            python -m pip install -e ".[${EXTRAS}]"
+          fi
+
+      - name: Build docs
+        shell: bash
+        env:
+          DOCS_DIR: ${{ inputs.docs-dir }}
+          SPHINX_OPTS: ${{ inputs.sphinx-opts }}
+        run: |
+          make -C "${DOCS_DIR}" clean
+          make -C "${DOCS_DIR}" html SPHINXOPTS="${SPHINX_OPTS}"
+
+      - name: Upload docs artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: docs-${{ matrix.os }}-py${{ matrix.python-version }}-failure
+          path: ${{ inputs.docs-dir }}/${{ inputs.build-dir }}/**
+          if-no-files-found: ignore
