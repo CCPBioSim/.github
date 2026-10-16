@@ -1,0 +1,80 @@
+name: CI conda build
+
+on:
+  workflow_call:
+    inputs:
+      os:
+        description: JSON array of runner labels to build on.
+        type: string
+        default: '["ubuntu-24.04"]'
+      recipe-path:
+        description: Directory containing the conda recipe.
+        type: string
+        default: conda-recipe
+      channels:
+        description: Comma-separated conda channels, in priority order. Only these channels are used.
+        type: string
+        default: conda-forge
+      python-versions:
+        description: JSON array of Python versions to build the recipe for.
+        type: string
+        default: '["3.12", "3.13", "3.14"]'
+      timeout-minutes:
+        description: Timeout for each job.
+        type: number
+        default: 90
+
+permissions:
+  contents: read
+
+jobs:
+  conda-build:
+    name: Conda build (${{ matrix.os }}, py${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(inputs.os) }}
+        python-version: ${{ fromJSON(inputs.python-versions) }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up conda
+        uses: conda-incubator/setup-miniconda@be893c923ea9cf1cf7cd510fbdde27c7e18cbdcb # v4.1.0
+        with:
+          miniforge-variant: Miniforge3
+          auto-activate: true
+          activate-environment: base
+          conda-remove-defaults: true
+          channels: ${{ inputs.channels }}
+          channel-priority: strict
+
+      - name: Install conda-build
+        shell: bash -l {0}
+        run: |
+          conda install -y \
+            --override-channels \
+            -c conda-forge \
+            conda-build
+
+      - name: Build recipe
+        shell: bash -l {0}
+        env:
+          RECIPE_PATH: ${{ inputs.recipe-path }}
+          CHANNELS: ${{ inputs.channels }}
+          PYTHON_VERSION: ${{ matrix.python-version }}
+        run: |
+          channel_args=()
+          IFS=',' read -ra channel_list <<< "${CHANNELS}"
+          for channel in "${channel_list[@]}"; do
+            channel_args+=(-c "${channel}")
+          done
+
+          conda build "${RECIPE_PATH}" \
+            --override-channels \
+            "${channel_args[@]}" \
+            --python "${PYTHON_VERSION}" \
+            --no-anaconda-upload
