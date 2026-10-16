@@ -1,0 +1,20 @@
+name: CI coveralls finish
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  finish:
+    name: Close Coveralls build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+
+    steps:
+      - name: Close parallel build
+        uses: coverallsapp/github-action@8d6379e14d29928660c4ba802d8e85393440b329 # v2.3.8
+        with:
+          github-token: ${{ github.token }}
+          parallel-finished: true
