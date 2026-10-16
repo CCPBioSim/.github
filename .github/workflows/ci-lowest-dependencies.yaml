@@ -1,0 +1,72 @@
+name: CI lowest dependencies
+
+on:
+  workflow_call:
+    inputs:
+      python-versions:
+        description: JSON array of Python versions to test.
+        type: string
+        default: '["3.12", "3.13", "3.14"]'
+      os:
+        description: JSON array of runner labels to test on.
+        type: string
+        default: '["ubuntu-24.04"]'
+      extras:
+        description: Optional-dependency group that installs the test requirements.
+        type: string
+        default: testing
+      test-path:
+        description: Path passed to pytest.
+        type: string
+        default: tests
+      timeout-minutes:
+        description: Timeout for each job.
+        type: number
+        default: 30
+
+permissions:
+  contents: read
+
+jobs:
+  lowest:
+    name: Lowest dependencies (${{ matrix.os }}, py${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(inputs.os) }}
+        python-version: ${{ fromJSON(inputs.python-versions) }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install uv
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install uv
+
+      - name: Resolve lowest dependencies as wheels
+        shell: bash
+        run: |
+          uv pip compile pyproject.toml --resolution lowest-direct --only-binary :all: --output-file lowest.txt
+          cat lowest.txt
+
+      - name: Install lowest dependencies
+        shell: bash
+        env:
+          EXTRAS: ${{ inputs.extras }}
+        run: uv pip install --system --reinstall --resolution lowest-direct -e ".[${EXTRAS}]"
+
+      - name: Run tests
+        shell: bash
+        env:
+          TEST_PATH: ${{ inputs.test-path }}
+        run: python -m pytest "${TEST_PATH}"
