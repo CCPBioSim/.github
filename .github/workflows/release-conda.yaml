@@ -1,0 +1,120 @@
+name: Release conda
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: Release tag to build and publish.
+        required: true
+        type: string
+      os:
+        description: JSON array of runner labels to build on.
+        type: string
+        default: '["ubuntu-24.04"]'
+      recipe-path:
+        description: Directory containing the conda recipe.
+        type: string
+        default: conda-recipe
+      channels:
+        description: Comma-separated conda channels, in priority order. Only these channels are used.
+        type: string
+        default: conda-forge
+      anaconda-user:
+        description: Anaconda.org user or organisation to upload to.
+        type: string
+        default: CCPBioSim
+      timeout-minutes:
+        description: Timeout for each job.
+        type: number
+        default: 90
+    secrets:
+      ANACONDA_TOKEN:
+        description: Anaconda.org API token with upload permission.
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  conda:
+    name: Publish to Anaconda.org (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(inputs.os) }}
+
+    steps:
+      - name: Checkout the release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag }}
+
+      - name: Set the recipe version
+        env:
+          VERSION: ${{ inputs.tag }}
+          RECIPE_PATH: ${{ inputs.recipe-path }}
+        run: |
+          recipe="${RECIPE_PATH}/meta.yaml"
+          if grep -q '^{% set version = ".*" %}$' "${recipe}"; then
+            sed -i.bak -E "s/^\{% set version = \".*\" %\}\$/{% set version = \"${VERSION}\" %}/" "${recipe}"
+            rm -f "${recipe}.bak"
+          fi
+          grep '{% set version' "${recipe}" || true
+
+      - name: Set up conda
+        uses: conda-incubator/setup-miniconda@be893c923ea9cf1cf7cd510fbdde27c7e18cbdcb # v4.1.0
+        with:
+          miniforge-variant: Miniforge3
+          auto-activate: true
+          activate-environment: base
+          conda-remove-defaults: true
+          channels: ${{ inputs.channels }}
+          channel-priority: strict
+
+      - name: Install build tools
+        shell: bash -l {0}
+        run: |
+          conda install -y \
+            --override-channels \
+            -c conda-forge \
+            conda-build anaconda-client
+          conda config --set anaconda_upload no
+
+      - name: Build packages
+        shell: bash -l {0}
+        env:
+          PIP_NO_INDEX: "0"
+          RECIPE_PATH: ${{ inputs.recipe-path }}
+          CHANNELS: ${{ inputs.channels }}
+        run: |
+          channel_args=()
+          IFS=',' read -ra channel_list <<< "${CHANNELS}"
+          for channel in "${channel_list[@]}"; do
+            channel_args+=(-c "${channel}")
+          done
+
+          : > packages.txt
+          while IFS= read -r package; do
+            echo "${package}" >> packages.txt
+          done < <(conda build "${RECIPE_PATH}" --override-channels "${channel_args[@]}" --output)
+
+          conda build "${RECIPE_PATH}" --override-channels "${channel_args[@]}"
+
+          while IFS= read -r package; do
+            test -f "${package}"
+            echo "Built: ${package}"
+          done < packages.txt
+
+      - name: Upload to Anaconda.org
+        shell: bash -l {0}
+        env:
+          ANACONDA_API_TOKEN: ${{ secrets.ANACONDA_TOKEN }}
+          ANACONDA_USER: ${{ inputs.anaconda-user }}
+        run: |
+          while IFS= read -r package; do
+            anaconda -t "${ANACONDA_API_TOKEN}" upload "${package}" --user "${ANACONDA_USER}" --force
+          done < packages.txt
