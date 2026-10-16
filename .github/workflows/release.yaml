@@ -1,0 +1,26 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to release, in X.Y.Z form.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    uses: ./.github/workflows/release-prepare.yaml
+    permissions:
+      contents: write
+      pull-requests: write
+    with:
+      version: ${{ inputs.version }}
+    # Zulip release announcements are disabled until 1.0.0.
+    # secrets:
+    #   ZULIP_BOT_EMAIL: ${{ secrets.ZULIP_BOT_EMAIL }}
+    #   ZULIP_BOT_API_KEY: ${{ secrets.ZULIP_BOT_API_KEY }}
+    #   ZULIP_SITE: ${{ secrets.ZULIP_SITE }}
