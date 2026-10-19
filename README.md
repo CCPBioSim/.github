@@ -70,7 +70,7 @@ Callers pin a full commit SHA with the version in a trailing comment, so Renovat
 | `ci-lowest-dependencies` | Test at the lowest versions that `pyproject.toml` allows | Lower bounds written as ranges |
 | `ci-conda-build` | Build a conda recipe without uploading it | Nothing required |
 | `ci-coveralls-finish` | Close a parallel Coveralls build | Run it after the coverage jobs |
-| `release-prepare` | Check the version, update version files through a merged pull request, tag and create the GitHub release | `version`, `contents` and `pull-requests` write, and `AUTO_PR_MERGE` when `version-files` is used |
+| `release-prepare` | Check the version, update version files through a merged pull request, tag and create the GitHub release | `version`, `contents` and `pull-requests` write, and `AUTO_PR_MERGE` when `version-files` is used. Optional `ZULIP_BOT_EMAIL`, `ZULIP_BOT_API_KEY` and `ZULIP_SITE` announce the release |
 | `release-pypi` | Build from the release tag and publish to PyPI | `tag` and `PYPI_API_TOKEN` |
 | `release-conda` | Build from the release tag and upload to Anaconda.org | `tag` and `ANACONDA_TOKEN` |
 | `maintenance-license-year` | Open a pull request that updates the license year | `contents` and `pull-requests` write |
