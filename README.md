@@ -77,7 +77,7 @@ Callers pin a full commit SHA with the version in a trailing comment, so Renovat
 
 The `actions/cpp-coverage-upload` composite action turns gcov data into an lcov report and uploads it to Coveralls as a named parallel build, so C++ coverage combines with Python coverage. `ci-test-python` and `ci-test-conda` take `pre-test-command`, and `ci-docs` takes `pre-build-command`, for steps that must run first, such as downloading data or generating files. The release workflows also take `dry-run`, which runs every step except the ones that publish or change the repository.
 
-Workflows in this repository are linted with `actionlint` and `zizmor` through pre-commit, which runs in CI through `ci-pre-commit`.
+Workflows in this repository are audited with `zizmor` through pre-commit, which runs in CI through `ci-pre-commit`.
 
 A pull request workflow in a package repository looks like this:
 
