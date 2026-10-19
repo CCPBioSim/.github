@@ -41,7 +41,7 @@ permissions:
 
 jobs:
   conda:
-    name: Publish to Anaconda.org (${{ matrix.os }})
+    name: Publish (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:

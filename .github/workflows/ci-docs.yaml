@@ -45,7 +45,7 @@ permissions:
 
 jobs:
   docs:
-    name: Docs (${{ matrix.os }}, py${{ matrix.python-version }})
+    name: Build (${{ matrix.os }}, py${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     strategy:

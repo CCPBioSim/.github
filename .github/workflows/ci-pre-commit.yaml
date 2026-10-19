@@ -21,7 +21,7 @@ permissions:
 
 jobs:
   pre-commit:
-    name: Pre-commit
+    name: Run
     runs-on: ubuntu-24.04
     timeout-minutes: ${{ inputs.timeout-minutes }}
 

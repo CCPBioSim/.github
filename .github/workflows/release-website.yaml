@@ -45,7 +45,7 @@ permissions:
 
 jobs:
   website:
-    name: Update the website
+    name: Send metadata
     runs-on: ubuntu-24.04
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:

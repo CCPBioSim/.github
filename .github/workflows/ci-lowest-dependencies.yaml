@@ -29,7 +29,7 @@ permissions:
 
 jobs:
   lowest:
-    name: Lowest dependencies (${{ matrix.os }}, py${{ matrix.python-version }})
+    name: Test (${{ matrix.os }}, py${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     strategy:
