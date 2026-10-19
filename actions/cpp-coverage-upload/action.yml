@@ -24,7 +24,7 @@ runs:
   steps:
     - name: Install gcovr
       shell: bash
-      run: python -m pip install gcovr
+      run: python -m pip install gcovr==8.7
 
     - name: Generate lcov report
       shell: bash
