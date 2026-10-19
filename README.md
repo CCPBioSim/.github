@@ -24,8 +24,8 @@ flowchart LR
 | Renovate presets | Live |
 | Pull request and issue templates | Live |
 | `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md` defaults | Live |
-| [Onboarding checklist](ONBOARDING.md) | Live |
-| Reusable CI and release workflows | Planned |
+| Reusable CI, release and maintenance workflows | Built, not yet used by a repository |
+| Workflow linting through pre-commit | Live |
 
 ## Using it
 
@@ -51,13 +51,64 @@ Changes here reach every repository on its next Renovate run. Runtime dependenci
 org:CCPBioSim is:pr is:open label:dependencies
 ```
 
+## Workflows
+
+Reusable workflows live in `.github/workflows/`. The folder is nested because this repository is itself called `.github`, so a caller writes the name twice:
+
+```text
+uses: CCPBioSim/.github/.github/workflows/<name>.yaml@<full commit SHA> # vX.Y.Z
+```
+
+Callers pin a full commit SHA with the version in a trailing comment, so Renovate can propose updates. A called workflow cannot have more permissions than its caller, so a caller grants what the table lists. Triggers, schedules and concurrency stay in the caller.
+
+| Workflow | Purpose | Caller provides |
+|---|---|---|
+| `ci-test-python` | Run pytest on a Python and OS matrix and upload coverage | `package`, and `checks`, `statuses` and `pull-requests` write |
+| `ci-test-conda` | The same for conda-based setups such as AiiDA plugins | `package`, `matrix`, `conda-packages`, and `checks` and `statuses` write |
+| `ci-docs` | Build Sphinx docs with warnings as errors | Nothing required |
+| `ci-pre-commit` | Run all pre-commit hooks | Nothing required |
+| `ci-lowest-dependencies` | Test at the lowest versions that `pyproject.toml` allows | Lower bounds written as ranges |
+| `ci-conda-build` | Build a conda recipe without uploading it | Nothing required |
+| `ci-coveralls-finish` | Close a parallel Coveralls build | Run it after the coverage jobs |
+| `release-prepare` | Check the version, update version files through a merged pull request, tag and create the GitHub release | `version`, `contents` and `pull-requests` write, and `AUTO_PR_MERGE` when `version-files` is used |
+| `release-pypi` | Build from the release tag and publish to PyPI | `tag` and `PYPI_API_TOKEN` |
+| `release-conda` | Build from the release tag and upload to Anaconda.org | `tag` and `ANACONDA_TOKEN` |
+| `maintenance-license-year` | Open a pull request that updates the license year | `contents` and `pull-requests` write |
+
+The `actions/cpp-coverage-upload` composite action turns gcov data into an lcov report and uploads it to Coveralls as a named parallel build, so C++ coverage combines with Python coverage. The release workflows also take `dry-run`, which runs every step except the ones that publish or change the repository.
+
+Workflows in this repository are linted with `actionlint` and `zizmor` through pre-commit, which runs in CI through `ci-pre-commit`.
+
+A pull request workflow in a package repository looks like this:
+
+```yaml
+jobs:
+  test:
+    uses: CCPBioSim/.github/.github/workflows/ci-test-python.yaml@<sha> # vX.Y.Z
+    permissions:
+      contents: read
+      checks: write
+      statuses: write
+      pull-requests: write
+    with:
+      package: mypackage
+  docs:
+    uses: CCPBioSim/.github/.github/workflows/ci-docs.yaml@<sha> # vX.Y.Z
+    permissions:
+      contents: read
+  pre-commit:
+    uses: CCPBioSim/.github/.github/workflows/ci-pre-commit.yaml@<sha> # vX.Y.Z
+    permissions:
+      contents: read
+```
+
 ## Defaults and policy
 
 The defaults in the shared workflows are the organisation baseline. Checks that validate compatibility run the full supported Python set by default. Checks that validate presentation run one leg by default. A repository widens or narrows these explicitly in its own workflow, and each exception is its own choice to document.
 
 | Workflow | Default Python | Default OS |
 |---|---|---|
-| `ci-test` | Full supported set | Linux |
+| `ci-test-python` | Full supported set | Linux |
 | `ci-lowest-dependencies` | Full supported set | Linux |
 | `ci-conda-build` | Full supported set | Linux |
 | `ci-docs` | Latest only | Linux |
