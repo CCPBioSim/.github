@@ -15,6 +15,10 @@ on:
         description: Package index upload URL. Leave empty to publish to PyPI, or set it to test against TestPyPI.
         type: string
         default: ""
+      dry-run:
+        description: Build and check the distributions but do not publish them.
+        type: boolean
+        default: false
       timeout-minutes:
         description: Timeout for the job.
         type: number
@@ -39,6 +43,7 @@ jobs:
       - name: Checkout the release tag
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           ref: ${{ inputs.tag }}
 
       - name: Set up Python ${{ inputs.python-version }}
@@ -58,6 +63,7 @@ jobs:
         run: python -m twine check dist/*
 
       - name: Publish to PyPI
+        if: ${{ !inputs.dry-run }}
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
