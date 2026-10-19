@@ -19,6 +19,10 @@ on:
         description: Branch that is released.
         type: string
         default: main
+      dry-run:
+        description: Run the version check and show the version file changes, then stop before opening a pull request, tagging or releasing.
+        type: boolean
+        default: false
       timeout-minutes:
         description: Timeout for each job.
         type: number
@@ -57,6 +61,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           ref: ${{ inputs.base-branch }}
           fetch-depth: 0
 
@@ -130,8 +135,12 @@ jobs:
               print(f"Updated {path} ({count} match(es))")
           PY
 
+      - name: Show version file changes
+        run: git diff
+
       - name: Open version pull request
         id: pr
+        if: ${{ !inputs.dry-run }}
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
           commit-message: Update version to ${{ inputs.version }}
@@ -147,6 +156,7 @@ jobs:
           draft: false
 
       - name: Approve version pull request
+        if: ${{ !inputs.dry-run }}
         uses: hmarr/auto-approve-action@f0939ea97e9205ef24d872e76833fa908a770363 # v4.0.0
         with:
           pull-request-number: ${{ steps.pr.outputs.pull-request-number }}
@@ -155,6 +165,7 @@ jobs:
 
       - name: Merge version pull request and wait for the merge
         id: merge
+        if: ${{ !inputs.dry-run }}
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -190,6 +201,7 @@ jobs:
     needs: [checks, version]
     if: >-
       always() &&
+      !inputs.dry-run &&
       needs.checks.result == 'success' &&
       (needs.version.result == 'success' || needs.version.result == 'skipped')
     runs-on: ubuntu-24.04
@@ -238,39 +250,13 @@ jobs:
 
     steps:
       - name: Create release
-        id: create_release
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
-        with:
-          name: v${{ inputs.version }}
-          generate_release_notes: true
-          tag_name: ${{ needs.tag.outputs.tag }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.tag.outputs.tag }}
+          VERSION: ${{ inputs.version }}
+        run: gh release create "${TAG}" --verify-tag --title "v${VERSION}" --generate-notes
 
-      # - name: Fetch generated changelog
-      #   id: changelog
-      #   if: steps.create_release.outcome == 'success' && env.ZULIP_SITE != ''
-      #   continue-on-error: true
-      #   env:
-      #     GH_TOKEN: ${{ github.token }}
-      #     TAG: ${{ needs.tag.outputs.tag }}
-      #     REPO: ${{ github.repository }}
-      #   run: gh release view "${TAG}" --repo "${REPO}" --json body -q .body > changelog.txt
-      #
-      # - name: Notify Zulip of release
-      #   if: steps.create_release.outcome == 'success' && env.ZULIP_SITE != ''
-      #   continue-on-error: true
-      #   env:
-      #     REPO_NAME: ${{ github.event.repository.name }}
-      #     TAG: v${{ inputs.version }}
-      #     RELEASE_URL: ${{ steps.create_release.outputs.url }}
-      #   run: |
-      #     content="**${REPO_NAME}** [${TAG}](${RELEASE_URL}) has been released 🎉"
-      #     if [ -f changelog.txt ]; then
-      #       content="${content}"$'\n\n'"$(cat changelog.txt)"
-      #     fi
-      #
-      #     curl -sSf "${ZULIP_SITE}/api/v1/messages" \
-      #       -u "${ZULIP_BOT_EMAIL}:${ZULIP_BOT_API_KEY}" \
-      #       --data-urlencode type=stream \
-      #       --data-urlencode "to=announcements" \
-      #       --data-urlencode "topic=software releases" \
-      #       --data-urlencode "content=${content}"
+      # Re-enable Zulip announcements at 1.0.0 together with the secrets and
+      # env above. The step needs the release body and URL, for example:
+      #   gh release view "${TAG}" --json body,url
