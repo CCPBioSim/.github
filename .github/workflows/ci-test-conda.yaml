@@ -1,0 +1,194 @@
+name: CI test conda
+
+on:
+  workflow_call:
+    inputs:
+      package:
+        description: Importable package name, used for the coverage report.
+        required: true
+        type: string
+      matrix:
+        description: >-
+          JSON array of matrix entries. Each entry is an object with a python
+          key and any other variables the conda package list refers to, for
+          example {"python": "3.14", "aiida": "2.9.1"}. An optional os key
+          chooses the runner and defaults to ubuntu-24.04.
+        type: string
+        default: '[{"python": "3.12"}, {"python": "3.13"}, {"python": "3.14"}]'
+      conda-packages:
+        description: >-
+          Space-separated conda package specs to install. {key} is replaced by
+          that matrix entry's value, for example "python={python} aiida-core={aiida}".
+        type: string
+        default: python={python}
+      environment-file:
+        description: Conda environment file used to create the environment. Leave empty to create an empty environment.
+        type: string
+        default: ""
+      activate-environment:
+        description: Name of the conda environment. It must match the name inside the environment file, if one is used.
+        type: string
+        default: testing
+      channels:
+        description: Comma-separated conda channels, in priority order.
+        type: string
+        default: conda-forge
+      extras:
+        description: Optional-dependency group installed with the package. Leave empty to install the package alone.
+        type: string
+        default: testing
+      pip-packages:
+        description: Space-separated extra packages to install with pip.
+        type: string
+        default: ""
+      pre-test-command:
+        description: Shell commands run in the same step as pytest, for example exporting environment variables.
+        type: string
+        default: ""
+      pytest-args:
+        description: Extra arguments passed to pytest.
+        type: string
+        default: ""
+      test-path:
+        description: Path passed to pytest.
+        type: string
+        default: tests
+      coverage:
+        description: Upload coverage to Coveralls as a parallel build and close it when every matrix entry has finished.
+        type: boolean
+        default: true
+      timeout-minutes:
+        description: Timeout for each job.
+        type: number
+        default: 30
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test (${{ join(matrix.*, ', ') }})
+    runs-on: ${{ matrix.os || 'ubuntu-24.04' }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read
+      checks: write
+      statuses: write
+    defaults:
+      run:
+        shell: bash -el {0}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(inputs.matrix) }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Resolve conda packages
+        id: packages
+        shell: bash
+        env:
+          MATRIX: ${{ toJSON(matrix) }}
+          CONDA_PACKAGES: ${{ inputs.conda-packages }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+
+          values = json.loads(os.environ["MATRIX"])
+          packages = os.environ["CONDA_PACKAGES"]
+          for key, value in values.items():
+              packages = packages.replace("{" + key + "}", str(value))
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
+              handle.write(f"packages={packages}\n")
+          print(f"Conda packages: {packages}")
+          PY
+
+      - name: Set up conda
+        uses: conda-incubator/setup-miniconda@be893c923ea9cf1cf7cd510fbdde27c7e18cbdcb # v4.1.0
+        with:
+          miniforge-variant: Miniforge3
+          python-version: ${{ matrix.python }}
+          environment-file: ${{ inputs.environment-file }}
+          activate-environment: ${{ inputs.activate-environment }}
+          channels: ${{ inputs.channels }}
+          auto-activate: false
+
+      - name: Install conda packages
+        env:
+          PACKAGES: ${{ steps.packages.outputs.packages }}
+          CHANNELS: ${{ inputs.channels }}
+        run: |
+          channel_args=()
+          IFS=',' read -ra channel_list <<< "${CHANNELS}"
+          for channel in "${channel_list[@]}"; do
+            channel_args+=(-c "${channel}")
+          done
+
+          read -r -a package_list <<< "${PACKAGES}"
+          if [ "${#package_list[@]}" -gt 0 ]; then
+            conda install -y "${channel_args[@]}" "${package_list[@]}"
+          fi
+
+      - name: Install the package
+        env:
+          EXTRAS: ${{ inputs.extras }}
+          PIP_PACKAGES: ${{ inputs.pip-packages }}
+        run: |
+          if [ -n "${EXTRAS}" ]; then
+            python -m pip install -e ".[${EXTRAS}]"
+          else
+            python -m pip install -e .
+          fi
+
+          read -r -a pip_list <<< "${PIP_PACKAGES}"
+          if [ "${#pip_list[@]}" -gt 0 ]; then
+            python -m pip install "${pip_list[@]}"
+          fi
+
+      - name: Run tests
+        env:
+          PACKAGE: ${{ inputs.package }}
+          TEST_PATH: ${{ inputs.test-path }}
+          PYTEST_ARGS: ${{ inputs.pytest-args }}
+          PRE_TEST_COMMAND: ${{ inputs.pre-test-command }}
+        run: |
+          if [ -n "${PRE_TEST_COMMAND}" ]; then
+            eval "${PRE_TEST_COMMAND}"
+          fi
+
+          read -r -a extra_args <<< "${PYTEST_ARGS}"
+          python -m pytest "${extra_args[@]}" "${TEST_PATH}" \
+            --cov "${PACKAGE}" \
+            --cov-report term-missing \
+            --cov-report "xml:${GITHUB_WORKSPACE}/coverage.xml" \
+            --cov-append
+
+      - name: Upload coverage to Coveralls
+        if: inputs.coverage
+        uses: coverallsapp/github-action@8d6379e14d29928660c4ba802d8e85393440b329 # v2.3.8
+        with:
+          github-token: ${{ github.token }}
+          file: ${{ github.workspace }}/coverage.xml
+          format: cobertura
+          flag-name: run-${{ join(matrix.*, '-') }}
+          parallel: true
+          fail-on-error: false
+
+  finish:
+    name: Close Coveralls build
+    needs: test
+    if: ${{ always() && inputs.coverage }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+
+    steps:
+      - name: Close parallel build
+        uses: coverallsapp/github-action@8d6379e14d29928660c4ba802d8e85393440b329 # v2.3.8
+        with:
+          github-token: ${{ github.token }}
+          parallel-finished: true
