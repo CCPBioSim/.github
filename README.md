@@ -56,7 +56,7 @@ org:CCPBioSim is:pr is:open label:dependencies
 Reusable workflows live in `.github/workflows/`. The folder is nested because this repository is itself called `.github`, so a caller writes the name twice:
 
 ```text
-uses: CCPBioSim/.github/.github/workflows/<name>.yaml@<full commit SHA> # vX.Y.Z
+uses: CCPBioSim/.github/.github/workflows/<name>.yaml@<full commit SHA> # X.Y.Z
 ```
 
 Callers pin a full commit SHA with the version in a trailing comment, so Renovate can propose updates. A called workflow cannot have more permissions than its caller, so a caller grants what the table lists. Triggers, schedules and concurrency stay in the caller.
@@ -84,7 +84,7 @@ A pull request workflow in a package repository looks like this:
 ```yaml
 jobs:
   test:
-    uses: CCPBioSim/.github/.github/workflows/ci-test-python.yaml@<sha> # vX.Y.Z
+    uses: CCPBioSim/.github/.github/workflows/ci-test-python.yaml@<sha> # X.Y.Z
     permissions:
       contents: read
       checks: write
@@ -93,11 +93,11 @@ jobs:
     with:
       package: mypackage
   docs:
-    uses: CCPBioSim/.github/.github/workflows/ci-docs.yaml@<sha> # vX.Y.Z
+    uses: CCPBioSim/.github/.github/workflows/ci-docs.yaml@<sha> # X.Y.Z
     permissions:
       contents: read
   pre-commit:
-    uses: CCPBioSim/.github/.github/workflows/ci-pre-commit.yaml@<sha> # vX.Y.Z
+    uses: CCPBioSim/.github/.github/workflows/ci-pre-commit.yaml@<sha> # X.Y.Z
     permissions:
       contents: read
 ```
