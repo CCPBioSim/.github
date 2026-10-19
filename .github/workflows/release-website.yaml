@@ -1,0 +1,114 @@
+name: Release website
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Released version, in X.Y.Z form.
+        required: true
+        type: string
+      tag:
+        description: Release tag to read the metadata files from. Leave empty to read the default branch, for a dry run.
+        type: string
+        default: ""
+      meta-file:
+        description: YAML file holding the website metadata for the package.
+        type: string
+        default: .github/web-meta.yaml
+      cff-file:
+        description: Citation file the authors are read from.
+        type: string
+        default: CITATION.cff
+      event-type:
+        description: Event type dispatched to the website repository.
+        type: string
+        default: software
+      website-repository:
+        description: Repository that receives the dispatch.
+        type: string
+        default: ccpbiosim/ccpbiosim.github.io
+      dry-run:
+        description: Build and print the payload but do not dispatch it.
+        type: boolean
+        default: false
+      timeout-minutes:
+        description: Timeout for the job.
+        type: number
+        default: 10
+    secrets:
+      BUILD_TOKEN:
+        description: Token allowed to dispatch events to the website repository.
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  website:
+    name: Update the website
+    runs-on: ubuntu-24.04
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.tag }}
+
+      - name: Build dispatch payload
+        id: payload
+        env:
+          NAME: ${{ github.event.repository.name }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+          VERSION: ${{ inputs.version }}
+          META_FILE: ${{ inputs.meta-file }}
+          CFF_FILE: ${{ inputs.cff-file }}
+        run: |
+          for f in "${META_FILE}" "${CFF_FILE}"; do
+            if [ ! -f "${f}" ]; then
+              echo "::error::${f} not found"
+              exit 1
+            fi
+          done
+
+          github_url="${REPO_URL}"
+          docs_url="https://${NAME,,}.readthedocs.io/"
+
+          meta=$(yq -o=json '.' "${META_FILE}")
+
+          authors=$(yq -o=json '.authors' "${CFF_FILE}" | jq -c '
+            map({
+              key: (
+                if .name then .name
+                else ([."given-names", ."family-names"] | map(select(. != null)) | join(" "))
+                end
+              ),
+              value: (.orcid // "")
+            }) | from_entries')
+
+          payload=$(jq -nc \
+            --arg name "${NAME}" \
+            --arg github "${github_url}" \
+            --arg docs "${docs_url}" \
+            --arg version "${VERSION}" \
+            --argjson meta "${meta}" \
+            --argjson authors "${authors}" \
+            '{
+              name: $name,
+              meta: ({github: $github, docs: $docs} + $meta + {version: $version, authors: $authors})
+            }')
+
+          echo "payload: ${payload}"
+          echo "json=${payload}" >> "${GITHUB_OUTPUT}"
+
+      - name: Post the version to the website metadata repository
+        if: ${{ !inputs.dry-run }}
+        uses: peter-evans/repository-dispatch@28959ce8df70de7be546dd1250a005dd32156697 # v4.0.1
+        with:
+          token: ${{ secrets.BUILD_TOKEN }}
+          repository: ${{ inputs.website-repository }}
+          event-type: ${{ inputs.event-type }}
+          client-payload: ${{ steps.payload.outputs.json }}
