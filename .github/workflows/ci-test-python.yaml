@@ -23,6 +23,10 @@ on:
         description: Path passed to pytest.
         type: string
         default: tests
+      pre-test-command:
+        description: Shell commands run in the same step as pytest, for example downloading data or exporting environment variables.
+        type: string
+        default: ""
       coverage:
         description: Upload a coverage report to Coveralls.
         type: boolean
@@ -80,7 +84,13 @@ jobs:
         shell: bash
         env:
           TEST_PATH: ${{ inputs.test-path }}
-        run: python -m pytest "${TEST_PATH}"
+          PRE_TEST_COMMAND: ${{ inputs.pre-test-command }}
+        run: |
+          if [ -n "${PRE_TEST_COMMAND}" ]; then
+            eval "${PRE_TEST_COMMAND}"
+          fi
+
+          python -m pytest "${TEST_PATH}"
 
   coverage:
     name: Coverage
@@ -116,7 +126,12 @@ jobs:
         env:
           PACKAGE: ${{ inputs.package }}
           TEST_PATH: ${{ inputs.test-path }}
+          PRE_TEST_COMMAND: ${{ inputs.pre-test-command }}
         run: |
+          if [ -n "${PRE_TEST_COMMAND}" ]; then
+            eval "${PRE_TEST_COMMAND}"
+          fi
+
           python -m pytest "${TEST_PATH}" \
             --cov "${PACKAGE}" \
             --cov-report term-missing \
