@@ -8,7 +8,7 @@ on:
         type: string
         default: "3.14"
       extras:
-        description: Optional-dependency group that installs pre-commit and the hook requirements.
+        description: Optional-dependency group that installs pre-commit and the hook requirements. Leave empty to install pre-commit alone.
         type: string
         default: pre-commit
       timeout-minutes:
@@ -28,6 +28,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Python ${{ inputs.python-version }}
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -39,7 +41,11 @@ jobs:
           EXTRAS: ${{ inputs.extras }}
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e ".[${EXTRAS}]"
+          if [ -n "${EXTRAS}" ]; then
+            python -m pip install -e ".[${EXTRAS}]"
+          else
+            python -m pip install pre-commit
+          fi
 
       - name: Run pre-commit
         run: |
