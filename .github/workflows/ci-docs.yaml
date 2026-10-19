@@ -31,6 +31,10 @@ on:
         description: Options passed to Sphinx as SPHINXOPTS. Use an empty string to allow warnings.
         type: string
         default: "-W --keep-going"
+      pre-build-command:
+        description: Shell commands run in the same step as the docs build, for example generating files the docs include.
+        type: string
+        default: ""
       timeout-minutes:
         description: Timeout for each job.
         type: number
@@ -79,7 +83,12 @@ jobs:
         env:
           DOCS_DIR: ${{ inputs.docs-dir }}
           SPHINX_OPTS: ${{ inputs.sphinx-opts }}
+          PRE_BUILD_COMMAND: ${{ inputs.pre-build-command }}
         run: |
+          if [ -n "${PRE_BUILD_COMMAND}" ]; then
+            eval "${PRE_BUILD_COMMAND}"
+          fi
+
           make -C "${DOCS_DIR}" clean
           make -C "${DOCS_DIR}" html SPHINXOPTS="${SPHINX_OPTS}"
 
