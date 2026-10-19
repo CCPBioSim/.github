@@ -23,6 +23,10 @@ on:
         description: Anaconda.org user or organisation to upload to.
         type: string
         default: CCPBioSim
+      dry-run:
+        description: Build the packages but do not upload them.
+        type: boolean
+        default: false
       timeout-minutes:
         description: Timeout for each job.
         type: number
@@ -51,6 +55,7 @@ jobs:
       - name: Checkout the release tag
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           ref: ${{ inputs.tag }}
 
       - name: Set the recipe version
@@ -110,6 +115,7 @@ jobs:
           done < packages.txt
 
       - name: Upload to Anaconda.org
+        if: ${{ !inputs.dry-run }}
         shell: bash -l {0}
         env:
           ANACONDA_API_TOKEN: ${{ secrets.ANACONDA_TOKEN }}
