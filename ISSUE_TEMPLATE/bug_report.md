@@ -13,6 +13,12 @@ assignees: ''
 1.
 2.
 
+## Configuration or input files
+<!-- If relevant, paste the configuration file and the exact command used, trimmed to the smallest example that reproduces the issue. -->
+```text
+# Paste the configuration and command here
+```
+
 ## Expected behaviour
 <!-- What you expected to happen. -->
 
