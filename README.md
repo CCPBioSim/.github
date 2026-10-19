@@ -1,6 +1,6 @@
 # CCPBioSim Shared Infrastructure
 
-Shared defaults for CCPBioSim software projects: consistent dependency management, community-health files and, later, CI and release workflows.
+Shared defaults for CCPBioSim software projects: consistent dependency management, community-health files, and reusable CI, release and maintenance workflows.
 
 **Centralising maintenance does not require centralising every decision.** Policy and repeated mechanics are shared. Scientific decisions stay in each package repository: dependency floors, supported Python versions, package paths, conda recipes and release exceptions.
 
@@ -8,13 +8,12 @@ Shared defaults for CCPBioSim software projects: consistent dependency managemen
 flowchart LR
     A["CCPBioSim/.github<br/>shared defaults"] --> B["Renovate presets"]
     A --> C["Community-health defaults"]
-    A -.-> D["Reusable workflows<br/>(planned)"]
+    A --> D["Reusable workflows"]
     B --> R["Package repositories"]
     C --> R
-    D -.-> R
+    D --> R
 
     style A fill:#245b78,color:#ffffff,stroke:#245b78
-    style D fill:#e8eef3,color:#17324d,stroke:#9aafbf,stroke-dasharray: 4 4
 ```
 
 ## Status
@@ -24,7 +23,7 @@ flowchart LR
 | Renovate presets | Live |
 | Pull request and issue templates | Live |
 | `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md` defaults | Live |
-| Reusable CI, release and maintenance workflows | Built, not yet used by a repository |
+| Reusable CI, release and maintenance workflows | Live |
 | Workflow linting through pre-commit | Live |
 
 ## Using it
