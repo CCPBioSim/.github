@@ -2,5 +2,5 @@ rules:
   artipacked:
     ignore:
       - maintenance-license-year.yaml:18
-      - release-prepare.yaml:104
-      - release-prepare.yaml:216
+      - release-prepare.yaml:106
+      - release-prepare.yaml:218

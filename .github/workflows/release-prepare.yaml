@@ -31,13 +31,15 @@ on:
       AUTO_PR_MERGE:
         description: Token used to approve the version bump pull request. Required when version-files is not empty.
         required: false
-      # Zulip release announcements are disabled until 1.0.0.
-      # ZULIP_BOT_EMAIL:
-      #   required: false
-      # ZULIP_BOT_API_KEY:
-      #   required: false
-      # ZULIP_SITE:
-      #   required: false
+      ZULIP_BOT_EMAIL:
+        description: Zulip bot email. The release is announced only when all three Zulip secrets are provided.
+        required: false
+      ZULIP_BOT_API_KEY:
+        description: Zulip bot API key.
+        required: false
+      ZULIP_SITE:
+        description: Zulip site URL.
+        required: false
     outputs:
       tag:
         description: The tag that was created.
@@ -242,11 +244,10 @@ jobs:
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
       contents: write
-    # Zulip release announcements are disabled until 1.0.0.
-    # env:
-    #   ZULIP_BOT_EMAIL: ${{ secrets.ZULIP_BOT_EMAIL }}
-    #   ZULIP_BOT_API_KEY: ${{ secrets.ZULIP_BOT_API_KEY }}
-    #   ZULIP_SITE: ${{ secrets.ZULIP_SITE }}
+    env:
+      ZULIP_BOT_EMAIL: ${{ secrets.ZULIP_BOT_EMAIL }}
+      ZULIP_BOT_API_KEY: ${{ secrets.ZULIP_BOT_API_KEY }}
+      ZULIP_SITE: ${{ secrets.ZULIP_SITE }}
 
     steps:
       - name: Create release
@@ -257,6 +258,24 @@ jobs:
           VERSION: ${{ inputs.version }}
         run: gh release create "${TAG}" --verify-tag --title "v${VERSION}" --generate-notes
 
-      # Re-enable Zulip announcements at 1.0.0 together with the secrets and
-      # env above. The step needs the release body and URL, for example:
-      #   gh release view "${TAG}" --json body,url
+      - name: Announce the release on Zulip
+        if: env.ZULIP_SITE != '' && env.ZULIP_BOT_EMAIL != '' && env.ZULIP_BOT_API_KEY != ''
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.tag.outputs.tag }}
+          VERSION: ${{ inputs.version }}
+          REPO_NAME: ${{ github.event.repository.name }}
+        run: |
+          release=$(gh release view "${TAG}" --json body,url)
+          url=$(jq -r .url <<< "${release}")
+          body=$(jq -r .body <<< "${release}")
+          content="**${REPO_NAME}** [v${VERSION}](${url}) has been released 🎉"$'\n\n'"${body}"
+
+          curl -sSf "${ZULIP_SITE}/api/v1/messages" \
+            -u "${ZULIP_BOT_EMAIL}:${ZULIP_BOT_API_KEY}" \
+            --data-urlencode type=stream \
+            --data-urlencode "to=announcements" \
+            --data-urlencode "topic=software releases" \
+            --data-urlencode "content=${content}"
