@@ -62,9 +62,18 @@ on:
         type: string
         default: tests
       coverage:
-        description: Upload coverage to Coveralls as a parallel build and close it when every matrix entry has finished.
+        description: Measure coverage and upload it to Coveralls.
         type: boolean
         default: true
+      coverage-leg:
+        description: >-
+          JSON object naming the one matrix leg that measures and uploads
+          coverage, for example {"python": "3.14", "aiida": "2.9.1"}. The other
+          legs run the tests without coverage, and the report is a single
+          Coveralls build with no per-leg statuses. Leave empty to upload every
+          leg as a parallel build, closed when all legs have finished.
+        type: string
+        default: ""
       timeout-minutes:
         description: Timeout for each job.
         type: number
@@ -165,39 +174,65 @@ jobs:
             python -m pip install "${pip_list[@]}"
           fi
 
+      - name: Select the coverage leg
+        id: leg
+        shell: bash
+        env:
+          MATRIX: ${{ toJSON(matrix) }}
+          LEG: ${{ inputs.coverage-leg }}
+          COVERAGE: ${{ inputs.coverage }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+
+          matrix = json.loads(os.environ["MATRIX"])
+          leg = json.loads(os.environ["LEG"] or "{}")
+          matches = all(str(matrix.get(key)) == str(value) for key, value in leg.items())
+          measure = os.environ["COVERAGE"] == "true" and matches
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
+              handle.write(f"measure={'true' if measure else 'false'}\n")
+          print(f"Coverage measured on this leg: {measure}")
+          PY
+
       - name: Run tests
         env:
           PACKAGE: ${{ inputs.package }}
           TEST_PATH: ${{ inputs.test-path }}
           PYTEST_ARGS: ${{ inputs.pytest-args }}
           PRE_TEST_COMMAND: ${{ inputs.pre-test-command }}
+          MEASURE: ${{ steps.leg.outputs.measure }}
         run: |
           if [ -n "${PRE_TEST_COMMAND}" ]; then
             eval "${PRE_TEST_COMMAND}"
           fi
 
           read -r -a extra_args <<< "${PYTEST_ARGS}"
-          python -m pytest "${extra_args[@]}" "${TEST_PATH}" \
-            --cov "${PACKAGE}" \
-            --cov-report term-missing \
-            --cov-report "xml:${GITHUB_WORKSPACE}/coverage.xml" \
-            --cov-append
+          if [ "${MEASURE}" = "true" ]; then
+            python -m pytest "${extra_args[@]}" "${TEST_PATH}" \
+              --cov "${PACKAGE}" \
+              --cov-report term-missing \
+              --cov-report "xml:${GITHUB_WORKSPACE}/coverage.xml" \
+              --cov-append
+          else
+            python -m pytest "${extra_args[@]}" "${TEST_PATH}"
+          fi
 
       - name: Upload coverage to Coveralls
-        if: inputs.coverage
+        if: steps.leg.outputs.measure == 'true'
         uses: coverallsapp/github-action@8d6379e14d29928660c4ba802d8e85393440b329 # v2.3.8
         with:
           github-token: ${{ github.token }}
           file: ${{ github.workspace }}/coverage.xml
           format: cobertura
-          flag-name: run-${{ join(matrix.*, '-') }}
-          parallel: true
+          flag-name: ${{ inputs.coverage-leg == '' && format('run-{0}', join(matrix.*, '-')) || '' }}
+          parallel: ${{ inputs.coverage-leg == '' }}
           fail-on-error: false
 
   finish:
     name: Close Coveralls build
     needs: test
-    if: ${{ always() && inputs.coverage }}
+    if: ${{ always() && inputs.coverage && inputs.coverage-leg == '' }}
     runs-on: ubuntu-26.04
     timeout-minutes: 5
 
