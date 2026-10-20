@@ -9,12 +9,13 @@ on:
         type: string
       matrix:
         description: >-
-          JSON array of matrix entries. Each entry is an object with a python
-          key and any other variables the conda package list refers to, for
-          example {"python": "3.14", "aiida": "2.9.1"}. An optional os key
-          chooses the runner and defaults to ubuntu-24.04.
+          JSON object describing the test matrix in the same form as a GitHub
+          Actions matrix. Each key is a list of values and every combination is
+          run, for example {"python": ["3.12", "3.14"], "aiida": ["2.9.0", "2.9.1"]}.
+          It must include python. An os key chooses the runners and defaults to
+          ubuntu-24.04. The include and exclude keys work as in GitHub Actions.
         type: string
-        default: '[{"python": "3.12"}, {"python": "3.13"}, {"python": "3.14"}]'
+        default: '{"python": ["3.12", "3.13", "3.14"]}'
       conda-packages:
         description: >-
           Space-separated conda package specs to install. {key} is replaced by
@@ -79,8 +80,7 @@ jobs:
         shell: bash -el {0}
     strategy:
       fail-fast: false
-      matrix:
-        include: ${{ fromJSON(inputs.matrix) }}
+      matrix: ${{ fromJSON(inputs.matrix) }}
 
     steps:
       - name: Checkout
