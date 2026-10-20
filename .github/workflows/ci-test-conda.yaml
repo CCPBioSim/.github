@@ -42,6 +42,13 @@ on:
         description: Space-separated extra packages to install with pip.
         type: string
         default: ""
+      lowest-dependencies:
+        description: >-
+          Install the lowest versions of the direct dependencies that
+          pyproject.toml allows, to check the declared floors. Packages already
+          installed by conda are left as they are, so pin those in the matrix.
+        type: boolean
+        default: false
       pre-test-command:
         description: Shell commands run in the same step as pytest, for example exporting environment variables.
         type: string
@@ -138,11 +145,19 @@ jobs:
         env:
           EXTRAS: ${{ inputs.extras }}
           PIP_PACKAGES: ${{ inputs.pip-packages }}
+          LOWEST: ${{ inputs.lowest-dependencies }}
         run: |
-          if [ -n "${EXTRAS}" ]; then
-            python -m pip install -e ".[${EXTRAS}]"
+          if [ "${LOWEST}" = "true" ]; then
+            python -m pip install uv==0.13.3
+            install=(uv pip install --python "$(command -v python)" --resolution lowest-direct)
           else
-            python -m pip install -e .
+            install=(python -m pip install)
+          fi
+
+          if [ -n "${EXTRAS}" ]; then
+            "${install[@]}" -e ".[${EXTRAS}]"
+          else
+            "${install[@]}" -e .
           fi
 
           read -r -a pip_list <<< "${PIP_PACKAGES}"
