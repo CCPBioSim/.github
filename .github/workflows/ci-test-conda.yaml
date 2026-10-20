@@ -61,17 +61,13 @@ on:
         description: Path passed to pytest.
         type: string
         default: tests
-      coverage:
-        description: Measure coverage and upload it to Coveralls.
-        type: boolean
-        default: true
       coverage-leg:
         description: >-
-          JSON object naming the one matrix leg that measures and uploads
-          coverage, for example {"python": "3.14", "aiida": "2.9.1"}. The other
-          legs run the tests without coverage, and the report is a single
-          Coveralls build with no per-leg statuses. Leave empty to upload every
-          leg as a parallel build, closed when all legs have finished.
+          JSON object naming the one matrix leg that measures coverage and
+          uploads it to Coveralls, for example {"python": "3.14", "aiida": "2.9.1"}.
+          The other legs run the tests without coverage. The job fails if a
+          key or value does not exist in the matrix. Leave empty to run
+          without coverage.
         type: string
         default: ""
       timeout-minutes:
@@ -179,17 +175,23 @@ jobs:
         shell: bash
         env:
           MATRIX: ${{ toJSON(matrix) }}
+          AXES: ${{ inputs.matrix }}
           LEG: ${{ inputs.coverage-leg }}
-          COVERAGE: ${{ inputs.coverage }}
         run: |
           python3 - <<'PY'
           import json
           import os
+          import sys
 
           matrix = json.loads(os.environ["MATRIX"])
+          axes = json.loads(os.environ["AXES"])
           leg = json.loads(os.environ["LEG"] or "{}")
-          matches = all(str(matrix.get(key)) == str(value) for key, value in leg.items())
-          measure = os.environ["COVERAGE"] == "true" and matches
+          for key, value in leg.items():
+              if key not in matrix:
+                  sys.exit(f"::error::coverage-leg key {key!r} is not in the matrix ({', '.join(matrix)})")
+              if key in axes and str(value) not in [str(item) for item in axes[key]]:
+                  sys.exit(f"::error::coverage-leg value {value!r} is not in the matrix values for {key!r} ({axes[key]})")
+          measure = bool(leg) and all(str(matrix[key]) == str(value) for key, value in leg.items())
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
               handle.write(f"measure={'true' if measure else 'false'}\n")
           print(f"Coverage measured on this leg: {measure}")
@@ -225,20 +227,4 @@ jobs:
           github-token: ${{ github.token }}
           file: ${{ github.workspace }}/coverage.xml
           format: cobertura
-          flag-name: ${{ inputs.coverage-leg == '' && format('run-{0}', join(matrix.*, '-')) || '' }}
-          parallel: ${{ inputs.coverage-leg == '' }}
           fail-on-error: false
-
-  finish:
-    name: Close Coveralls build
-    needs: test
-    if: ${{ always() && inputs.coverage && inputs.coverage-leg == '' }}
-    runs-on: ubuntu-26.04
-    timeout-minutes: 5
-
-    steps:
-      - name: Close parallel build
-        uses: coverallsapp/github-action@8d6379e14d29928660c4ba802d8e85393440b329 # v2.3.8
-        with:
-          github-token: ${{ github.token }}
-          parallel-finished: true
