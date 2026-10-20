@@ -54,7 +54,7 @@ permissions:
 jobs:
   checks:
     name: Version check
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
       contents: read
@@ -94,7 +94,7 @@ jobs:
     name: Version pull request
     needs: checks
     if: inputs.version-files != '[]'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
       contents: write
@@ -206,7 +206,7 @@ jobs:
       !inputs.dry-run &&
       needs.checks.result == 'success' &&
       (needs.version.result == 'success' || needs.version.result == 'skipped')
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
       contents: write
@@ -240,7 +240,7 @@ jobs:
   release:
     name: Create GitHub release
     needs: tag
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
       contents: write
