@@ -34,7 +34,7 @@ permissions:
 jobs:
   pypi:
     name: Publish
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
       contents: read
