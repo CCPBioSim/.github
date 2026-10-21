@@ -7,21 +7,22 @@ on:
         description: Importable package name, used for the coverage report.
         required: true
         type: string
-      matrix:
-        description: >-
-          JSON object describing the test matrix in the same form as a GitHub
-          Actions matrix. Each key is a list of values and every combination is
-          run, for example {"python": ["3.12", "3.14"], "aiida": ["2.9.0", "2.9.1"]}.
-          It must include python. An os key chooses the runners and defaults to
-          ubuntu-24.04. The include and exclude keys work as in GitHub Actions.
+      python-versions:
+        description: JSON array of Python versions to test.
         type: string
-        default: '{"python": ["3.12", "3.13", "3.14"]}'
+        default: '["3.12", "3.13", "3.14"]'
+      os:
+        description: JSON array of runner labels to test on.
+        type: string
+        default: '["ubuntu-26.04"]'
       conda-packages:
         description: >-
-          Space-separated conda package specs to install. {key} is replaced by
-          that matrix entry's value, for example "python={python} aiida-core={aiida}".
+          Space-separated conda package specs to install on top of Python, for
+          example "aiida-core=2.9.1 ambertools=24". The Python version of each
+          leg is pinned for you. A caller that needs several versions of a
+          package runs this workflow from a job with its own strategy matrix.
         type: string
-        default: python={python}
+        default: ""
       environment-file:
         description: Conda environment file used to create the environment. Leave empty to create an empty environment.
         type: string
@@ -46,7 +47,7 @@ on:
         description: >-
           Install the lowest versions of the direct dependencies that
           pyproject.toml allows, to check the declared floors. Packages already
-          installed by conda are left as they are, so pin those in the matrix.
+          installed by conda are left as they are, so pin those in conda-packages.
         type: boolean
         default: false
       pre-test-command:
@@ -61,15 +62,16 @@ on:
         description: Path passed to pytest.
         type: string
         default: tests
-      coverage-leg:
+      coverage:
         description: >-
-          JSON object naming the one matrix leg that measures coverage and
-          uploads it to Coveralls, for example {"python": "3.14", "aiida": "2.9.1"}.
-          The other legs run the tests without coverage. The job fails if a
-          key or value does not exist in the matrix. Leave empty to run
-          without coverage.
+          Measure coverage on every leg and upload one report to Coveralls, from
+          the coverage-python-version leg. Use a single runner when this is on.
+        type: boolean
+        default: false
+      coverage-python-version:
+        description: Python version whose leg uploads the coverage report. It must be one of python-versions.
         type: string
-        default: ""
+        default: "3.14"
       timeout-minutes:
         description: Timeout for each job.
         type: number
@@ -80,8 +82,8 @@ permissions:
 
 jobs:
   test:
-    name: Test (${{ join(matrix.*, ', ') }})
-    runs-on: ${{ matrix.os || 'ubuntu-24.04' }}
+    name: Test (${{ matrix.os }}, py${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
       contents: read
@@ -92,7 +94,9 @@ jobs:
         shell: bash -el {0}
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(inputs.matrix) }}
+      matrix:
+        os: ${{ fromJSON(inputs.os) }}
+        python-version: ${{ fromJSON(inputs.python-versions) }}
 
     steps:
       - name: Checkout
@@ -100,31 +104,11 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Resolve conda packages
-        id: packages
-        shell: bash
-        env:
-          MATRIX: ${{ toJSON(matrix) }}
-          CONDA_PACKAGES: ${{ inputs.conda-packages }}
-        run: |
-          python3 - <<'PY'
-          import json
-          import os
-
-          values = json.loads(os.environ["MATRIX"])
-          packages = os.environ["CONDA_PACKAGES"]
-          for key, value in values.items():
-              packages = packages.replace("{" + key + "}", str(value))
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
-              handle.write(f"packages={packages}\n")
-          print(f"Conda packages: {packages}")
-          PY
-
       - name: Set up conda
         uses: conda-incubator/setup-miniconda@be893c923ea9cf1cf7cd510fbdde27c7e18cbdcb # v4.1.0
         with:
           miniforge-variant: Miniforge3
-          python-version: ${{ matrix.python }}
+          python-version: ${{ matrix.python-version }}
           environment-file: ${{ inputs.environment-file }}
           activate-environment: ${{ inputs.activate-environment }}
           channels: ${{ inputs.channels }}
@@ -132,7 +116,8 @@ jobs:
 
       - name: Install conda packages
         env:
-          PACKAGES: ${{ steps.packages.outputs.packages }}
+          PYTHON_VERSION: ${{ matrix.python-version }}
+          PACKAGES: ${{ inputs.conda-packages }}
           CHANNELS: ${{ inputs.channels }}
         run: |
           channel_args=()
@@ -143,7 +128,7 @@ jobs:
 
           read -r -a package_list <<< "${PACKAGES}"
           if [ "${#package_list[@]}" -gt 0 ]; then
-            conda install -y "${channel_args[@]}" "${package_list[@]}"
+            conda install -y "${channel_args[@]}" "python=${PYTHON_VERSION}" "${package_list[@]}"
           fi
 
       - name: Install the package
@@ -170,58 +155,27 @@ jobs:
             python -m pip install "${pip_list[@]}"
           fi
 
-      - name: Select the coverage leg
-        id: leg
-        shell: bash
-        env:
-          MATRIX: ${{ toJSON(matrix) }}
-          AXES: ${{ inputs.matrix }}
-          LEG: ${{ inputs.coverage-leg }}
-        run: |
-          python3 - <<'PY'
-          import json
-          import os
-          import sys
-
-          matrix = json.loads(os.environ["MATRIX"])
-          axes = json.loads(os.environ["AXES"])
-          leg = json.loads(os.environ["LEG"] or "{}")
-          for key, value in leg.items():
-              if key not in matrix:
-                  sys.exit(f"::error::coverage-leg key {key!r} is not in the matrix ({', '.join(matrix)})")
-              if key in axes and str(value) not in [str(item) for item in axes[key]]:
-                  sys.exit(f"::error::coverage-leg value {value!r} is not in the matrix values for {key!r} ({axes[key]})")
-          measure = bool(leg) and all(str(matrix[key]) == str(value) for key, value in leg.items())
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
-              handle.write(f"measure={'true' if measure else 'false'}\n")
-          print(f"Coverage measured on this leg: {measure}")
-          PY
-
       - name: Run tests
         env:
           PACKAGE: ${{ inputs.package }}
           TEST_PATH: ${{ inputs.test-path }}
           PYTEST_ARGS: ${{ inputs.pytest-args }}
           PRE_TEST_COMMAND: ${{ inputs.pre-test-command }}
-          MEASURE: ${{ steps.leg.outputs.measure }}
+          COVERAGE: ${{ inputs.coverage }}
         run: |
           if [ -n "${PRE_TEST_COMMAND}" ]; then
             eval "${PRE_TEST_COMMAND}"
           fi
 
           read -r -a extra_args <<< "${PYTEST_ARGS}"
-          if [ "${MEASURE}" = "true" ]; then
-            python -m pytest "${extra_args[@]}" "${TEST_PATH}" \
-              --cov "${PACKAGE}" \
-              --cov-report term-missing \
-              --cov-report "xml:${GITHUB_WORKSPACE}/coverage.xml" \
-              --cov-append
-          else
-            python -m pytest "${extra_args[@]}" "${TEST_PATH}"
+          cov_args=()
+          if [ "${COVERAGE}" = "true" ]; then
+            cov_args=(--cov "${PACKAGE}" --cov-report term-missing --cov-report "xml:${GITHUB_WORKSPACE}/coverage.xml")
           fi
+          python -m pytest "${extra_args[@]}" "${cov_args[@]}" "${TEST_PATH}"
 
       - name: Upload coverage to Coveralls
-        if: steps.leg.outputs.measure == 'true'
+        if: inputs.coverage && matrix.python-version == inputs.coverage-python-version
         uses: coverallsapp/github-action@8d6379e14d29928660c4ba802d8e85393440b329 # v2.3.8
         with:
           github-token: ${{ github.token }}
