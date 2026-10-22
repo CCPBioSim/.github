@@ -6,7 +6,7 @@ on:
       os:
         description: JSON array of runner labels to build on.
         type: string
-        default: '["ubuntu-24.04"]'
+        default: '["ubuntu-26.04"]'
       recipe-path:
         description: Directory containing the conda recipe.
         type: string

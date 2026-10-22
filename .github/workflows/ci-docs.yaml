@@ -10,7 +10,7 @@ on:
       os:
         description: JSON array of runner labels to build the docs on.
         type: string
-        default: '["ubuntu-24.04"]'
+        default: '["ubuntu-26.04"]'
       extras:
         description: Optional-dependency group that installs the docs requirements.
         type: string
