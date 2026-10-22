@@ -91,6 +91,7 @@ jobs:
 
           payload=$(jq -nc \
             --arg name "${NAME}" \
+            --arg repo "${NAME,,}" \
             --arg github "${github_url}" \
             --arg docs "${docs_url}" \
             --arg version "${VERSION}" \
@@ -98,6 +99,8 @@ jobs:
             --argjson authors "${authors}" \
             '{
               name: $name,
+              repo: $repo,
+              tag: $version,
               meta: ({github: $github, docs: $docs} + $meta + {version: $version, authors: $authors})
             }')
 
