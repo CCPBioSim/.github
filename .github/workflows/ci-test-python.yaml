@@ -14,7 +14,7 @@ on:
       os:
         description: JSON array of runner labels to test on.
         type: string
-        default: '["ubuntu-24.04"]'
+        default: '["ubuntu-26.04"]'
       extras:
         description: Optional-dependency group that installs the test requirements.
         type: string
@@ -27,8 +27,15 @@ on:
         description: Shell commands run in the same step as pytest, for example downloading data or exporting environment variables.
         type: string
         default: ""
+      lowest-dependencies:
+        description: >-
+          Install the lowest versions of the direct dependencies that
+          pyproject.toml allows, to check the declared floors. Coverage is
+          skipped in this mode.
+        type: boolean
+        default: false
       coverage:
-        description: Upload a coverage report to Coveralls.
+        description: Upload a coverage report to Coveralls. It is skipped when lowest-dependencies is set.
         type: boolean
         default: true
       coverage-python-version:
@@ -76,9 +83,15 @@ jobs:
         shell: bash
         env:
           EXTRAS: ${{ inputs.extras }}
+          LOWEST: ${{ inputs.lowest-dependencies }}
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e ".[${EXTRAS}]"
+          if [ "${LOWEST}" = "true" ]; then
+            python -m pip install uv==0.13.3
+            uv pip install --system --resolution lowest-direct -e ".[${EXTRAS}]"
+          else
+            python -m pip install -e ".[${EXTRAS}]"
+          fi
 
       - name: Run tests
         shell: bash
@@ -94,7 +107,7 @@ jobs:
 
   coverage:
     name: Coverage
-    if: inputs.coverage
+    if: inputs.coverage && !inputs.lowest-dependencies
     needs: test
     runs-on: ubuntu-26.04
     timeout-minutes: ${{ inputs.timeout-minutes }}
