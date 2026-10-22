@@ -62,11 +62,10 @@ Callers pin a full commit SHA with the version in a trailing comment, so Renovat
 
 | Workflow | Purpose | Caller provides |
 |---|---|---|
-| `ci-test-python` | Run pytest on a Python and OS matrix and upload coverage | `package`, and `checks`, `statuses` and `pull-requests` write |
-| `ci-test-conda` | The same for conda-based setups such as AiiDA plugins | `package`, `matrix`, `conda-packages`, and `checks` and `statuses` write |
+| `ci-test-python` | Run pytest on a Python and OS matrix, upload coverage, or test at the lowest versions that `pyproject.toml` allows (`lowest-dependencies`) | `package`, and `checks`, `statuses` and `pull-requests` write |
+| `ci-test-conda` | The same for conda-based setups such as AiiDA plugins | `package`, `conda-packages`, and `checks` and `statuses` write |
 | `ci-docs` | Build Sphinx docs with warnings as errors | Nothing required |
 | `ci-pre-commit` | Run all pre-commit hooks | Nothing required |
-| `ci-lowest-dependencies` | Test at the lowest versions that `pyproject.toml` allows | Lower bounds written as ranges |
 | `ci-conda-build` | Build a conda recipe without uploading it | Nothing required |
 | `ci-coveralls-finish` | Close a parallel Coveralls build | Run it after the coverage jobs |
 | `release-prepare` | Check the version, update version files through a merged pull request, tag and create the GitHub release | `version`, `contents` and `pull-requests` write, and `AUTO_PR_MERGE` when `version-files` is used. Optional `ZULIP_BOT_EMAIL`, `ZULIP_BOT_API_KEY` and `ZULIP_SITE` announce the release |
@@ -109,14 +108,72 @@ The defaults in the shared workflows are the organisation baseline. Checks that 
 | Workflow | Default Python | Default OS |
 |---|---|---|
 | `ci-test-python` | Full supported set | Linux |
-| `ci-lowest-dependencies` | Full supported set | Linux |
+| `ci-test-conda` | Full supported set | Linux |
 | `ci-conda-build` | Full supported set | Linux |
 | `ci-docs` | Latest only | Linux |
 | `ci-pre-commit` | Latest only | Linux |
 
 **Python versions.** The default set is the three newest stable CPython releases. A package's own `pyproject.toml` is the source of truth, so its matrix should match its `requires-python` and classifiers. A package with a narrower range overrides the default in its workflow. Adding a Python version waits until the package's dependencies support it, and dropping one is a deliberate, reviewed change.
 
-**Operating systems.** The default is Linux only. Add macOS and Windows where a package has platform-specific behaviour, such as native code, numerical libraries or documented platform support. A scheduled workflow can run the wider matrix so pull requests stay quick.
+**Operating systems.** The default is Linux only, on `ubuntu-26.04`. Add macOS and Windows where a package has platform-specific behaviour, such as native code, numerical libraries or documented platform support. A scheduled workflow can run the wider matrix so pull requests stay quick.
+
+## Where versions are controlled
+
+| What | Where it lives | How it stays current |
+|---|---|---|
+| Shared-workflow pins in a package repository | the `uses:` lines of its workflows | the Renovate presets in `renovate/` |
+| Python versions and the runner | defaults in the shared workflows | edit them here and release |
+| Python dependencies, including AiiDA | the package's own `pyproject.toml` | tested at the newest version in range, and at the lowest with `lowest-dependencies` |
+| Programs pip cannot install (GROMACS, PLUMED, AmberTools) | `conda-packages` in the package's `ci.yaml` | the repository |
+
+The runner label is written as a literal `runs-on` in some workflows, which Renovate updates, and in the `os` defaults, which it cannot see. When Renovate proposes a runner update, change the `os` defaults in the same pull request. `grep -rn "ubuntu-" .github` lists every place.
+
+A package repository keeps one `ci.yaml` that runs on pull requests, on pushes to `main` and weekly. Python versions come from the shared defaults, so the file lists no versions. A conda-based package adds `conda-packages` for the programs pip cannot install, and a package that needs an extra matrix axis puts a normal `strategy.matrix` on the calling job:
+
+```yaml
+jobs:
+  unit:
+    uses: CCPBioSim/.github/.github/workflows/ci-test-conda.yaml@<sha> # X.Y.Z
+    permissions:
+      contents: read
+      checks: write
+      statuses: write
+    with:
+      package: mypackage
+      conda-packages: someprogram=1.2
+      coverage: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
+  all-checks:
+    needs: [unit]
+    if: always()
+    runs-on: ubuntu-26.04
+    steps:
+      - env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: '[[ "${RESULTS}" != *failure* && "${RESULTS}" != *cancelled* ]]'
+```
+
+The `all-checks` job is the one check to require in branch protection, so a matrix change never breaks it.
+
+The floors check is its own weekly workflow in each repository, so pull requests stay quick. It calls the same test workflow with `lowest-dependencies: true`, and a narrower `python-versions` such as the oldest and newest supported:
+
+```yaml
+# .github/workflows/dependency-floors.yaml in a package repository
+on:
+  schedule:
+    - cron: "47 8 * * 1"
+  workflow_dispatch:
+jobs:
+  lowest-dependencies:
+    uses: CCPBioSim/.github/.github/workflows/ci-test-conda.yaml@<sha> # X.Y.Z
+    permissions:
+      contents: read
+      checks: write
+      statuses: write
+    with:
+      package: mypackage
+      lowest-dependencies: true
+      python-versions: '["3.12", "3.14"]'
+```
 
 ---
 
