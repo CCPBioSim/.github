@@ -2,7 +2,8 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "description": [
     "CCPBioSim baseline Renovate configuration.",
-    "Does not restrict enabledManagers. Assignees and reviewers are set in each repository."
+    "Does not restrict enabledManagers. Assignees and reviewers are set in each repository.",
+    "Pre-commit hook versions are updated in every repository."
   ],
   "extends": [
     "config:best-practices",
@@ -11,6 +12,9 @@
   "timezone": "Europe/London",
   "schedule": ["after 9am and before 5pm every weekday"],
   "dependencyDashboard": true,
+  "pre-commit": {
+    "enabled": true
+  },
   "minimumReleaseAge": "3 days",
   "packageRules": [
     {

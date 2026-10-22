@@ -3,8 +3,5 @@
   "extends": [
     "github>CCPBioSim/.github//renovate/default"
   ],
-  "reviewers": ["harryswift01", "jimboid"],
-  "pre-commit": {
-    "enabled": true
-  }
+  "reviewers": ["harryswift01", "jimboid"]
 }
