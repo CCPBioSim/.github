@@ -1,6 +1,0 @@
-rules:
-  artipacked:
-    ignore:
-      - maintenance-license-year.yaml:18
-      - release-prepare.yaml:106
-      - release-prepare.yaml:218
