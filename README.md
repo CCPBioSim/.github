@@ -62,7 +62,7 @@ Callers pin a full commit SHA with the version in a trailing comment, so Renovat
 
 | Workflow | Purpose | Caller provides |
 |---|---|---|
-| `ci-test-python` | Run pytest on a Python and OS matrix, upload coverage, and optionally re-run the tests at the lowest versions that `pyproject.toml` allows (`lowest-dependencies-check`) | `package`, and `checks` and `statuses` write |
+| `ci-test-python` | Run pytest on a Python and OS matrix, report coverage to Coveralls in a separate `Coverage` job, and optionally re-run the tests at the lowest versions that `pyproject.toml` allows (`lowest-dependencies-check`) | `package`, and `checks` and `statuses` write |
 | `ci-test-conda` | The same for conda-based setups such as AiiDA plugins | `package`, `conda-packages`, and `checks` and `statuses` write |
 | `ci-docs` | Build Sphinx docs with warnings as errors | Nothing required |
 | `ci-pre-commit` | Run all pre-commit hooks | Nothing required |
@@ -73,6 +73,8 @@ Callers pin a full commit SHA with the version in a trailing comment, so Renovat
 | `release-pypi` | Build from the release tag and publish to PyPI | `tag` and `PYPI_API_TOKEN` |
 | `release-conda` | Build from the release tag and upload to Anaconda.org | `tag` and `ANACONDA_TOKEN` |
 | `maintenance-license-year` | Open a pull request that updates the license year | `contents` and `pull-requests` write |
+
+Coverage is measured on one leg only, the first runner in `os` on `coverage-python-version`. That leg saves `coverage.xml` as an artifact, and the `Coverage` job uploads it to Coveralls, so the other legs run without the coverage overhead.
 
 The `actions/cpp-coverage-upload` composite action turns gcov data into an lcov report and uploads it to Coveralls as a named parallel build, so C++ coverage combines with Python coverage. `ci-test-python` and `ci-test-conda` take `pre-test-command`, and `ci-docs` takes `pre-build-command`, for steps that must run first, such as downloading data or generating files. The release workflows also take `dry-run`, which runs every step except the ones that publish or change the repository.
 
