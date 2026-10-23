@@ -50,6 +50,13 @@ on:
           installed by conda are left as they are, so pin those in conda-packages.
         type: boolean
         default: false
+      lowest-dependencies-leg:
+        description: >-
+          Add one extra leg that tests at the lowest dependency versions, on the
+          first runner in os and the first version in python-versions (list the
+          oldest first). The other legs are unchanged.
+        type: boolean
+        default: false
       pre-test-command:
         description: Shell commands run in the same step as pytest, for example exporting environment variables.
         type: string
@@ -82,7 +89,7 @@ permissions:
 
 jobs:
   test:
-    name: Test (${{ matrix.os }}, py${{ matrix.python-version }})
+    name: Test (${{ matrix.os }}, py${{ matrix.python-version }}${{ matrix.lowest && ', lowest' || '' }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
@@ -97,6 +104,8 @@ jobs:
       matrix:
         os: ${{ fromJSON(inputs.os) }}
         python-version: ${{ fromJSON(inputs.python-versions) }}
+        lowest: ${{ fromJSON(inputs.lowest-dependencies && '[true]' || '[false]') }}
+        include: ${{ fromJSON(inputs.lowest-dependencies-leg && format('[{{"os":"{0}","python-version":"{1}","lowest":true}}]', fromJSON(inputs.os)[0], fromJSON(inputs.python-versions)[0]) || '[]') }}
 
     steps:
       - name: Checkout
@@ -135,7 +144,7 @@ jobs:
         env:
           EXTRAS: ${{ inputs.extras }}
           PIP_PACKAGES: ${{ inputs.pip-packages }}
-          LOWEST: ${{ inputs.lowest-dependencies }}
+          LOWEST: ${{ matrix.lowest }}
         run: |
           if [ "${LOWEST}" = "true" ]; then
             python -m pip install uv==0.13.3
@@ -175,7 +184,7 @@ jobs:
           python -m pytest "${extra_args[@]}" "${cov_args[@]}" "${TEST_PATH}"
 
       - name: Upload coverage to Coveralls
-        if: inputs.coverage && matrix.python-version == inputs.coverage-python-version
+        if: inputs.coverage && !matrix.lowest && matrix.python-version == inputs.coverage-python-version
         uses: coverallsapp/github-action@8d6379e14d29928660c4ba802d8e85393440b329 # v2.3.8
         with:
           github-token: ${{ github.token }}

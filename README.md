@@ -154,7 +154,9 @@ jobs:
 
 The `all-checks` job is the one check to require in branch protection, so a matrix change never breaks it.
 
-The floors check is its own weekly workflow in each repository, so pull requests stay quick. It calls the same test workflow with `lowest-dependencies: true`, and a narrower `python-versions` such as the oldest and newest supported:
+**Dependency floors.** Set `lowest-dependencies-leg: true` on the test job to add one extra leg, on the first runner and the first Python version in the lists (list versions oldest first), that installs the lowest versions `pyproject.toml` allows. It runs with every other leg, so pull requests check the floors at the cost of one job.
+
+For a wider check, a repository can also run a weekly workflow that calls the same test workflow with `lowest-dependencies: true`, which makes every leg a floors leg, and a narrower `python-versions` such as the oldest and newest supported:
 
 ```yaml
 # .github/workflows/dependency-floors.yaml in a package repository
