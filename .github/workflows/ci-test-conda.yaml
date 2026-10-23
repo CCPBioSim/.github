@@ -43,18 +43,12 @@ on:
         description: Space-separated extra packages to install with pip.
         type: string
         default: ""
-      lowest-dependencies:
+      lowest-dependencies-check:
         description: >-
-          Install the lowest versions of the direct dependencies that
-          pyproject.toml allows, to check the declared floors. Packages already
-          installed by conda are left as they are, so pin those in conda-packages.
-        type: boolean
-        default: false
-      lowest-dependencies-leg:
-        description: >-
-          Add one extra leg that tests at the lowest dependency versions, on the
-          first runner in os and the first version in python-versions (list the
-          oldest first). The other legs are unchanged.
+          After the normal tests, reinstall the lowest versions of the direct
+          dependencies that pyproject.toml allows and run the tests again in the
+          same job, to check the declared floors. Coverage is not measured in
+          this second run.
         type: boolean
         default: false
       pre-test-command:
@@ -72,7 +66,7 @@ on:
       coverage:
         description: >-
           Measure coverage on every leg and upload one report to Coveralls, from
-          the coverage-python-version leg. Use a single runner when this is on.
+          the first runner in os on the coverage-python-version leg.
         type: boolean
         default: false
       coverage-python-version:
@@ -89,7 +83,7 @@ permissions:
 
 jobs:
   test:
-    name: Test (${{ matrix.os }}, py${{ matrix.python-version }}${{ matrix.lowest && ', lowest' || '' }})
+    name: Test (${{ matrix.os }}, py${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
@@ -104,8 +98,6 @@ jobs:
       matrix:
         os: ${{ fromJSON(inputs.os) }}
         python-version: ${{ fromJSON(inputs.python-versions) }}
-        lowest: ${{ fromJSON(inputs.lowest-dependencies && '[true]' || '[false]') }}
-        include: ${{ fromJSON(inputs.lowest-dependencies-leg && format('[{{"os":"{0}","python-version":"{1}","lowest":true}}]', fromJSON(inputs.os)[0], fromJSON(inputs.python-versions)[0]) || '[]') }}
 
     steps:
       - name: Checkout
@@ -144,19 +136,11 @@ jobs:
         env:
           EXTRAS: ${{ inputs.extras }}
           PIP_PACKAGES: ${{ inputs.pip-packages }}
-          LOWEST: ${{ matrix.lowest }}
         run: |
-          if [ "${LOWEST}" = "true" ]; then
-            python -m pip install uv==0.13.3
-            install=(uv pip install --python "$(command -v python)" --resolution lowest-direct)
-          else
-            install=(python -m pip install)
-          fi
-
           if [ -n "${EXTRAS}" ]; then
-            "${install[@]}" -e ".[${EXTRAS}]"
+            python -m pip install -e ".[${EXTRAS}]"
           else
-            "${install[@]}" -e .
+            python -m pip install -e .
           fi
 
           read -r -a pip_list <<< "${PIP_PACKAGES}"
@@ -184,10 +168,38 @@ jobs:
           python -m pytest "${extra_args[@]}" "${cov_args[@]}" "${TEST_PATH}"
 
       - name: Upload coverage to Coveralls
-        if: inputs.coverage && !matrix.lowest && matrix.python-version == inputs.coverage-python-version
+        if: inputs.coverage && matrix.python-version == inputs.coverage-python-version && matrix.os == fromJSON(inputs.os)[0]
         uses: coverallsapp/github-action@8d6379e14d29928660c4ba802d8e85393440b329 # v2.3.8
         with:
           github-token: ${{ github.token }}
           file: ${{ github.workspace }}/coverage.xml
           format: cobertura
           fail-on-error: false
+
+      - name: Install the lowest dependencies
+        if: inputs.lowest-dependencies-check
+        env:
+          EXTRAS: ${{ inputs.extras }}
+        run: |
+          python -m pip install uv==0.13.3
+          install=(uv pip install --python "$(command -v python)" --reinstall --resolution lowest-direct)
+
+          if [ -n "${EXTRAS}" ]; then
+            "${install[@]}" -e ".[${EXTRAS}]"
+          else
+            "${install[@]}" -e .
+          fi
+
+      - name: Run tests at the lowest dependencies
+        if: inputs.lowest-dependencies-check
+        env:
+          TEST_PATH: ${{ inputs.test-path }}
+          PYTEST_ARGS: ${{ inputs.pytest-args }}
+          PRE_TEST_COMMAND: ${{ inputs.pre-test-command }}
+        run: |
+          if [ -n "${PRE_TEST_COMMAND}" ]; then
+            eval "${PRE_TEST_COMMAND}"
+          fi
+
+          read -r -a extra_args <<< "${PYTEST_ARGS}"
+          python -m pytest "${extra_args[@]}" "${TEST_PATH}"

@@ -27,26 +27,22 @@ on:
         description: Shell commands run in the same step as pytest, for example downloading data or exporting environment variables.
         type: string
         default: ""
-      lowest-dependencies:
+      lowest-dependencies-check:
         description: >-
-          Install the lowest versions of the direct dependencies that
-          pyproject.toml allows, to check the declared floors. Coverage is
-          skipped in this mode.
-        type: boolean
-        default: false
-      lowest-dependencies-leg:
-        description: >-
-          Add one extra leg that tests at the lowest dependency versions, on the
-          first runner in os and the first version in python-versions (list the
-          oldest first). The other legs are unchanged.
+          After the normal tests, reinstall the lowest versions of the direct
+          dependencies that pyproject.toml allows and run the tests again in the
+          same job, to check the declared floors. Coverage is not measured in
+          this second run.
         type: boolean
         default: false
       coverage:
-        description: Upload a coverage report to Coveralls. It is skipped when lowest-dependencies is set.
+        description: >-
+          Measure coverage on every leg and upload one report to Coveralls, from
+          the first runner in os on the coverage-python-version leg.
         type: boolean
         default: true
       coverage-python-version:
-        description: Python version used for the coverage job.
+        description: Python version whose leg uploads the coverage report. It must be one of python-versions.
         type: string
         default: "3.14"
       coverage-flag:
@@ -66,16 +62,21 @@ permissions:
 
 jobs:
   test:
-    name: Test (${{ matrix.os }}, py${{ matrix.python-version }}${{ matrix.lowest && ', lowest' || '' }})
+    name: Test (${{ matrix.os }}, py${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read
+      checks: write
+      statuses: write
+    defaults:
+      run:
+        shell: bash
     strategy:
       fail-fast: false
       matrix:
         os: ${{ fromJSON(inputs.os) }}
         python-version: ${{ fromJSON(inputs.python-versions) }}
-        lowest: ${{ fromJSON(inputs.lowest-dependencies && '[true]' || '[false]') }}
-        include: ${{ fromJSON(inputs.lowest-dependencies-leg && format('[{{"os":"{0}","python-version":"{1}","lowest":true}}]', fromJSON(inputs.os)[0], fromJSON(inputs.python-versions)[0]) || '[]') }}
 
     steps:
       - name: Checkout
@@ -89,21 +90,49 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install test dependencies
-        shell: bash
         env:
           EXTRAS: ${{ inputs.extras }}
-          LOWEST: ${{ matrix.lowest }}
         run: |
           python -m pip install --upgrade pip
-          if [ "${LOWEST}" = "true" ]; then
-            python -m pip install uv==0.13.3
-            uv pip install --system --resolution lowest-direct -e ".[${EXTRAS}]"
-          else
-            python -m pip install -e ".[${EXTRAS}]"
-          fi
+          python -m pip install -e ".[${EXTRAS}]"
 
       - name: Run tests
-        shell: bash
+        env:
+          PACKAGE: ${{ inputs.package }}
+          TEST_PATH: ${{ inputs.test-path }}
+          PRE_TEST_COMMAND: ${{ inputs.pre-test-command }}
+          COVERAGE: ${{ inputs.coverage }}
+        run: |
+          if [ -n "${PRE_TEST_COMMAND}" ]; then
+            eval "${PRE_TEST_COMMAND}"
+          fi
+
+          cov_args=()
+          if [ "${COVERAGE}" = "true" ]; then
+            cov_args=(--cov "${PACKAGE}" --cov-report term-missing --cov-report xml)
+          fi
+          python -m pytest "${cov_args[@]}" "${TEST_PATH}"
+
+      - name: Upload coverage to Coveralls
+        if: inputs.coverage && matrix.python-version == inputs.coverage-python-version && matrix.os == fromJSON(inputs.os)[0]
+        uses: coverallsapp/github-action@8d6379e14d29928660c4ba802d8e85393440b329 # v2.3.8
+        with:
+          github-token: ${{ github.token }}
+          file: coverage.xml
+          flag-name: ${{ inputs.coverage-flag }}
+          parallel: ${{ inputs.coverage-flag != '' }}
+          fail-on-error: false
+
+      - name: Install the lowest dependencies
+        if: inputs.lowest-dependencies-check
+        env:
+          EXTRAS: ${{ inputs.extras }}
+        run: |
+          python -m pip install uv==0.13.3
+          uv pip install --system --reinstall --resolution lowest-direct -e ".[${EXTRAS}]"
+
+      - name: Run tests at the lowest dependencies
+        if: inputs.lowest-dependencies-check
         env:
           TEST_PATH: ${{ inputs.test-path }}
           PRE_TEST_COMMAND: ${{ inputs.pre-test-command }}
@@ -113,58 +142,3 @@ jobs:
           fi
 
           python -m pytest "${TEST_PATH}"
-
-  coverage:
-    name: Coverage
-    if: inputs.coverage && !inputs.lowest-dependencies
-    needs: test
-    runs-on: ubuntu-26.04
-    timeout-minutes: ${{ inputs.timeout-minutes }}
-    permissions:
-      contents: read
-      checks: write
-      statuses: write
-      pull-requests: write
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Set up Python ${{ inputs.coverage-python-version }}
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: ${{ inputs.coverage-python-version }}
-
-      - name: Install test dependencies
-        env:
-          EXTRAS: ${{ inputs.extras }}
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e ".[${EXTRAS}]"
-
-      - name: Run tests with coverage
-        env:
-          PACKAGE: ${{ inputs.package }}
-          TEST_PATH: ${{ inputs.test-path }}
-          PRE_TEST_COMMAND: ${{ inputs.pre-test-command }}
-        run: |
-          if [ -n "${PRE_TEST_COMMAND}" ]; then
-            eval "${PRE_TEST_COMMAND}"
-          fi
-
-          python -m pytest "${TEST_PATH}" \
-            --cov "${PACKAGE}" \
-            --cov-report term-missing \
-            --cov-report xml \
-            -q
-
-      - name: Upload coverage to Coveralls
-        uses: coverallsapp/github-action@8d6379e14d29928660c4ba802d8e85393440b329 # v2.3.8
-        with:
-          github-token: ${{ github.token }}
-          file: coverage.xml
-          flag-name: ${{ inputs.coverage-flag }}
-          parallel: ${{ inputs.coverage-flag != '' }}
-          fail-on-error: false

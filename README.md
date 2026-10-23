@@ -62,7 +62,7 @@ Callers pin a full commit SHA with the version in a trailing comment, so Renovat
 
 | Workflow | Purpose | Caller provides |
 |---|---|---|
-| `ci-test-python` | Run pytest on a Python and OS matrix, upload coverage, or test at the lowest versions that `pyproject.toml` allows (`lowest-dependencies`) | `package`, and `checks`, `statuses` and `pull-requests` write |
+| `ci-test-python` | Run pytest on a Python and OS matrix, upload coverage, and optionally re-run the tests at the lowest versions that `pyproject.toml` allows (`lowest-dependencies-check`) | `package`, and `checks` and `statuses` write |
 | `ci-test-conda` | The same for conda-based setups such as AiiDA plugins | `package`, `conda-packages`, and `checks` and `statuses` write |
 | `ci-docs` | Build Sphinx docs with warnings as errors | Nothing required |
 | `ci-pre-commit` | Run all pre-commit hooks | Nothing required |
@@ -88,7 +88,6 @@ jobs:
       contents: read
       checks: write
       statuses: write
-      pull-requests: write
     with:
       package: mypackage
   docs:
@@ -123,7 +122,7 @@ The defaults in the shared workflows are the organisation baseline. Checks that 
 |---|---|---|
 | Shared-workflow pins in a package repository | the `uses:` lines of its workflows | the Renovate presets in `renovate/` |
 | Python versions and the runner | defaults in the shared workflows | edit them here and release |
-| Python dependencies, including AiiDA | the package's own `pyproject.toml` | tested at the newest version in range, and at the lowest with `lowest-dependencies` |
+| Python dependencies, including AiiDA | the package's own `pyproject.toml` | tested at the newest version in range, and at the lowest with `lowest-dependencies-check` |
 | Programs pip cannot install (GROMACS, PLUMED, AmberTools) | `conda-packages` in the package's `ci.yaml` | the repository |
 
 The runner label is written as a literal `runs-on` in some workflows, which Renovate updates, and in the `os` defaults, which it cannot see. When Renovate proposes a runner update, change the `os` defaults in the same pull request. `grep -rn "ubuntu-" .github` lists every place.
@@ -154,28 +153,7 @@ jobs:
 
 The `all-checks` job is the one check to require in branch protection, so a matrix change never breaks it.
 
-**Dependency floors.** Set `lowest-dependencies-leg: true` on the test job to add one extra leg, on the first runner and the first Python version in the lists (list versions oldest first), that installs the lowest versions `pyproject.toml` allows. It runs with every other leg, so pull requests check the floors at the cost of one job.
-
-For a wider check, a repository can also run a weekly workflow that calls the same test workflow with `lowest-dependencies: true`, which makes every leg a floors leg, and a narrower `python-versions` such as the oldest and newest supported:
-
-```yaml
-# .github/workflows/dependency-floors.yaml in a package repository
-on:
-  schedule:
-    - cron: "47 8 * * 1"
-  workflow_dispatch:
-jobs:
-  lowest-dependencies:
-    uses: CCPBioSim/.github/.github/workflows/ci-test-conda.yaml@<sha> # X.Y.Z
-    permissions:
-      contents: read
-      checks: write
-      statuses: write
-    with:
-      package: mypackage
-      lowest-dependencies: true
-      python-versions: '["3.12", "3.14"]'
-```
+**Dependency floors.** Set `lowest-dependencies-check: true` on the test job. After the normal tests, each leg reinstalls the lowest versions `pyproject.toml` allows for its direct dependencies and runs the tests again, so the floors are checked on every OS and Python version without extra jobs. Coverage is measured only in the normal run. The weekly run of `ci.yaml` includes it too, so no separate floors workflow is needed.
 
 ---
 
