@@ -74,7 +74,7 @@ Callers pin a full commit SHA with the version in a trailing comment, so Renovat
 | `release-conda` | Build from the release tag and upload to Anaconda.org | `tag` and `ANACONDA_TOKEN` |
 | `maintenance-license-year` | Open a pull request that updates the license year | `contents` and `pull-requests` write |
 
-Coverage is measured on one leg only, the first runner in `os` on `coverage-python-version`. That leg saves `coverage.xml` as an artifact, and the `Coverage` job uploads it to Coveralls, so the other legs run without the coverage overhead.
+Coverage is measured on one leg only, the first runner in `os` on `coverage-python-version`, or on the first entry of `python-versions` when that version is not in the list. That leg saves `coverage.xml` as an artifact, and the `Coverage` job uploads it to Coveralls, so the other legs run without the coverage overhead. Coverage is on by default in `ci-test-python` and off in `ci-test-conda`, so a conda-based caller sets `coverage: true` where it wants a report. A caller that runs a test workflow from a matrix gives each leg its own `coverage-flag` and closes the build with `ci-coveralls-finish`, so the reports have distinct names and combine in Coveralls.
 
 The `actions/cpp-coverage-upload` composite action turns gcov data into an lcov report and uploads it to Coveralls as a named parallel build, so C++ coverage combines with Python coverage. `ci-test-python` and `ci-test-conda` take `pre-test-command`, and `ci-docs` takes `pre-build-command`, for steps that must run first, such as downloading data or generating files. The release workflows also take `dry-run`, which runs every step except the ones that publish or change the repository.
 
