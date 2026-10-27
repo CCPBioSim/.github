@@ -1,0 +1,149 @@
+name: CI test C++ coverage
+
+on:
+  workflow_call:
+    inputs:
+      build-command:
+        description: Shell commands that build the C++ code with coverage instrumentation, for example "make -C src coverage".
+        required: true
+        type: string
+      filters:
+        description: gcovr filters, one regular expression per line, selecting the source files to report.
+        required: true
+        type: string
+      flag-name:
+        description: Name for this coverage report in Coveralls. The caller closes the parallel build with ci-coveralls-finish.
+        type: string
+        default: cpp
+      python-version:
+        description: Python version used to install the package and run the tests.
+        type: string
+        default: "3.14"
+      conda-packages:
+        description: >-
+          Space-separated conda package specs to install, for example programs
+          the tests call that pip cannot install. Leave empty to skip conda.
+        type: string
+        default: ""
+      channels:
+        description: Comma-separated conda channels, in priority order.
+        type: string
+        default: conda-forge
+      extras:
+        description: Optional-dependency group installed with the package. Leave empty to install the package alone.
+        type: string
+        default: testing
+      pre-test-command:
+        description: Shell commands run in the same step as pytest, for example exporting the paths of the instrumented binaries.
+        type: string
+        default: ""
+      pytest-args:
+        description: Extra arguments passed to pytest.
+        type: string
+        default: ""
+      test-path:
+        description: Path passed to pytest.
+        type: string
+        default: tests
+      gcovr-root:
+        description: gcovr root directory.
+        type: string
+        default: "."
+      gcovr-args:
+        description: Extra arguments passed to gcovr.
+        type: string
+        default: ""
+      timeout-minutes:
+        description: Timeout for the job.
+        type: number
+        default: 30
+
+permissions:
+  contents: read
+
+jobs:
+  cpp-coverage:
+    name: Test
+    runs-on: ubuntu-26.04
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read
+      checks: write
+      statuses: write
+    defaults:
+      run:
+        shell: bash -el {0}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python ${{ inputs.python-version }}
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ inputs.python-version }}
+
+      - name: Set up conda
+        if: inputs.conda-packages != ''
+        uses: conda-incubator/setup-miniconda@be893c923ea9cf1cf7cd510fbdde27c7e18cbdcb # v4.1.0
+        with:
+          miniforge-variant: Miniforge3
+          python-version: ${{ inputs.python-version }}
+          activate-environment: testing
+          channels: ${{ inputs.channels }}
+          auto-activate: false
+
+      - name: Install conda packages
+        if: inputs.conda-packages != ''
+        env:
+          PYTHON_VERSION: ${{ inputs.python-version }}
+          PACKAGES: ${{ inputs.conda-packages }}
+          CHANNELS: ${{ inputs.channels }}
+        run: |
+          channel_args=()
+          IFS=',' read -ra channel_list <<< "${CHANNELS}"
+          for channel in "${channel_list[@]}"; do
+            channel_args+=(-c "${channel}")
+          done
+
+          read -r -a package_list <<< "${PACKAGES}"
+          conda install -y "${channel_args[@]}" "python=${PYTHON_VERSION}" "${package_list[@]}"
+
+      - name: Install the package
+        env:
+          EXTRAS: ${{ inputs.extras }}
+        run: |
+          python -m pip install --upgrade pip
+          if [ -n "${EXTRAS}" ]; then
+            python -m pip install -e ".[${EXTRAS}]"
+          else
+            python -m pip install -e .
+          fi
+
+      - name: Build with coverage instrumentation
+        env:
+          BUILD_COMMAND: ${{ inputs.build-command }}
+        run: eval "${BUILD_COMMAND}"
+
+      - name: Run tests
+        env:
+          TEST_PATH: ${{ inputs.test-path }}
+          PYTEST_ARGS: ${{ inputs.pytest-args }}
+          PRE_TEST_COMMAND: ${{ inputs.pre-test-command }}
+        run: |
+          if [ -n "${PRE_TEST_COMMAND}" ]; then
+            eval "${PRE_TEST_COMMAND}"
+          fi
+
+          read -r -a extra_args <<< "${PYTEST_ARGS}"
+          python -m pytest "${extra_args[@]}" "${TEST_PATH}"
+
+      - name: Upload coverage to Coveralls
+        uses: CCPBioSim/.github/actions/cpp-coverage-upload@edc3732fa8d31a58312ca784e65cad9bdfba9347 # 0.13.0
+        with:
+          filters: ${{ inputs.filters }}
+          flag-name: ${{ inputs.flag-name }}
+          root: ${{ inputs.gcovr-root }}
+          gcovr-args: ${{ inputs.gcovr-args }}
