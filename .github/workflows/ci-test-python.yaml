@@ -37,19 +37,23 @@ on:
         default: false
       coverage:
         description: >-
-          Measure coverage on every leg and upload one report to Coveralls, from
-          the first runner in os on the coverage-python-version leg.
+          Measure coverage on one leg, the first runner in os on the
+          coverage-python-version leg, and upload the report to Coveralls from a
+          separate Coverage job.
         type: boolean
         default: true
       coverage-python-version:
-        description: Python version whose leg uploads the coverage report. It must be one of python-versions.
+        description: >-
+          Python version whose leg measures coverage. When it is not one of
+          python-versions, the first entry of python-versions is used instead.
         type: string
         default: "3.14"
       coverage-flag:
         description: >-
           Name for this coverage report. When set, it is uploaded as a named
           parallel build and the caller must close it with ci-coveralls-finish.
-          Leave empty for a single, self-contained report.
+          Leave empty for a single, self-contained report. A caller that runs
+          this workflow from a matrix sets a different flag for each leg.
         type: string
         default: ""
       timeout-minutes:
@@ -73,7 +77,7 @@ jobs:
       run:
         shell: bash
     env:
-      COVERAGE_LEG: ${{ inputs.coverage && matrix.python-version == inputs.coverage-python-version && matrix.os == fromJSON(inputs.os)[0] }}
+      COVERAGE_LEG: ${{ inputs.coverage && matrix.python-version == (contains(fromJSON(inputs.python-versions), inputs.coverage-python-version) && inputs.coverage-python-version || fromJSON(inputs.python-versions)[0]) && matrix.os == fromJSON(inputs.os)[0] }}
     strategy:
       fail-fast: false
       matrix:
@@ -118,7 +122,7 @@ jobs:
         if: env.COVERAGE_LEG == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: coverage-${{ inputs.package }}
+          name: coverage-${{ inputs.package }}${{ inputs.coverage-flag != '' && format('-{0}', inputs.coverage-flag) || '' }}
           path: coverage.xml
 
       - name: Install the lowest dependencies
@@ -156,7 +160,7 @@ jobs:
       - name: Get the coverage report
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: coverage-${{ inputs.package }}
+          name: coverage-${{ inputs.package }}${{ inputs.coverage-flag != '' && format('-{0}', inputs.coverage-flag) || '' }}
 
       - name: Upload coverage to Coveralls
         uses: coverallsapp/github-action@8d6379e14d29928660c4ba802d8e85393440b329 # v2.3.8
