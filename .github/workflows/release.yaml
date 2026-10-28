@@ -19,3 +19,7 @@ jobs:
       pull-requests: write
     with:
       version: ${{ inputs.version }}
+    secrets:
+      ZULIP_BOT_EMAIL: ${{ secrets.ZULIP_BOT_EMAIL }}
+      ZULIP_BOT_API_KEY: ${{ secrets.ZULIP_BOT_API_KEY }}
+      ZULIP_SITE: ${{ secrets.ZULIP_SITE }}
