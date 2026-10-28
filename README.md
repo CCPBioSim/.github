@@ -81,11 +81,24 @@ Coverage is measured on one leg only, the first runner in `os` on `coverage-pyth
 
 Workflows in this repository are audited with `zizmor` through pre-commit, which runs in CI through `ci-pre-commit`.
 
-A pull request workflow in a package repository looks like this:
+A package repository's `pr.yaml` looks like this:
 
 ```yaml
+name: Pull Request CI
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  test:
+  unit:
+    name: Unit
     uses: CCPBioSim/.github/.github/workflows/ci-test-python.yaml@<sha> # X.Y.Z
     permissions:
       contents: read
@@ -93,11 +106,16 @@ jobs:
       statuses: write
     with:
       package: mypackage
+      lowest-dependencies-check: true
   docs:
+    name: Docs
+    needs: unit
     uses: CCPBioSim/.github/.github/workflows/ci-docs.yaml@<sha> # X.Y.Z
     permissions:
       contents: read
   pre-commit:
+    name: Pre-commit
+    needs: unit
     uses: CCPBioSim/.github/.github/workflows/ci-pre-commit.yaml@<sha> # X.Y.Z
     permissions:
       contents: read
@@ -126,37 +144,29 @@ The defaults in the shared workflows are the organisation baseline. Checks that 
 | Shared-workflow pins in a package repository | the `uses:` lines of its workflows | the Renovate presets in `renovate/` |
 | Python versions and the runner | defaults in the shared workflows | edit them here and release |
 | Python dependencies, including AiiDA | the package's own `pyproject.toml` | tested at the newest version in range, and at the lowest with `lowest-dependencies-check` |
-| Programs pip cannot install (GROMACS, PLUMED, AmberTools) | `conda-packages` in the package's `ci.yaml` | the repository |
+| Programs pip cannot install (GROMACS, PLUMED, AmberTools) | `conda-packages` in the package's test workflows | the repository |
+| Conda recipe dependencies | read from `pyproject.toml` with `load_file_data` for pure-Python packages, or written in `conda-recipe/meta.yaml` for compiled or conda-first packages | the same as the Python dependencies, or the repository |
 
 The runner label is written as a literal `runs-on` in some workflows, which Renovate updates, and in the `os` defaults, which it cannot see. When Renovate proposes a runner update, change the `os` defaults in the same pull request. `grep -rn "ubuntu-" .github` lists every place.
 
-A package repository keeps one `ci.yaml` that runs on pull requests, on pushes to `main` and weekly. Python versions come from the shared defaults, so the file lists no versions. A conda-based package adds `conda-packages` for the programs pip cannot install, and a package that needs an extra matrix axis puts a normal `strategy.matrix` on the calling job:
+## Package repository layout
 
-```yaml
-jobs:
-  unit:
-    uses: CCPBioSim/.github/.github/workflows/ci-test-conda.yaml@<sha> # X.Y.Z
-    permissions:
-      contents: read
-      checks: write
-      statuses: write
-    with:
-      package: mypackage
-      conda-packages: someprogram=1.2
-      coverage: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
-  all-checks:
-    needs: [unit]
-    if: always()
-    runs-on: ubuntu-26.04
-    steps:
-      - env:
-          RESULTS: ${{ join(needs.*.result, ' ') }}
-        run: '[[ "${RESULTS}" != *failure* && "${RESULTS}" != *cancelled* ]]'
-```
+Every package repository uses the same set of caller workflows. Start from [Python-Template](https://github.com/CCPBioSim/Python-Template), which has the full set, and see CodeEntropy for a pip-based package and aiida-amber for a conda-based one.
 
-The `all-checks` job is the one check to require in branch protection, so a matrix change never breaks it.
+| File | Runs | Calls |
+|---|---|---|
+| `pr.yaml` | On pull requests | The test workflow with coverage and `lowest-dependencies-check`, `ci-docs`, `ci-pre-commit`, and `ci-conda-build` if the package has a conda recipe |
+| `weekly-tests.yaml` | Mondays | The test workflow with `lowest-dependencies-check` and `coverage: false`, often on a wider OS matrix |
+| `coveralls-main.yaml` | On pushes to `main` | The test workflow with coverage, to build the baseline that pull requests are compared with |
+| `weekly-docs.yaml` | Mondays | `ci-docs` |
+| `release.yaml` | Manually, with `version` and `dry-run` | `release-prepare`, then `release-website`, `release-pypi` and `release-conda` as the package needs |
+| `update-copyright-years-in-license-file.yaml` | On 1 January | `maintenance-license-year` |
 
-**Dependency floors.** Set `lowest-dependencies-check: true` on the test job. After the normal tests, each leg reinstalls the lowest versions `pyproject.toml` allows for its direct dependencies and runs the tests again, so the floors are checked on every OS and Python version without extra jobs. Coverage is measured only in the normal run. The weekly run of `ci.yaml` includes it too, so no separate floors workflow is needed.
+Python versions come from the shared defaults, so the files list none unless `requires-python` is narrower. A conda-based package adds `conda-packages` for the programs pip cannot install, and a package that needs an extra matrix axis puts a normal `strategy.matrix` on the calling job. Workflows that only one package needs, such as regression tests or a Docker image build, stay in that repository next to these files.
+
+Branch protection requires the checks from `pr.yaml`. Their names come from the job and workflow names, for example `Unit / Test (ubuntu-26.04, py3.14)`, so update the required checks when a matrix or job name changes.
+
+**Dependency floors.** Set `lowest-dependencies-check: true` on the test job. After the normal tests, each leg reinstalls the lowest versions `pyproject.toml` allows for its direct dependencies and runs the tests again, so the floors are checked on every OS and Python version without extra jobs. Coverage is measured only in the normal run. `weekly-tests.yaml` runs it too, so no separate floors workflow is needed.
 
 ---
 
