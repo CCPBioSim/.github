@@ -19,6 +19,28 @@ on:
         description: Branch that is released.
         type: string
         default: main
+      version-command:
+        description: >-
+          Shell commands run after the version files are updated and before the
+          version pull request is opened, for example regenerating files that
+          embed the version. Changed and new files are included in the pull
+          request. Python is set up when this is used.
+        type: string
+        default: ""
+      release-assets-command:
+        description: >-
+          Shell commands run from a checkout of the new tag that build files to
+          attach to the GitHub release. Python is set up when this is used.
+        type: string
+        default: ""
+      release-assets:
+        description: Space-separated paths of the files built by release-assets-command to attach to the GitHub release.
+        type: string
+        default: ""
+      python-version:
+        description: Python version set up for version-command and release-assets-command.
+        type: string
+        default: "3.14"
       dry-run:
         description: Run the version check and show the version file changes, then stop before opening a pull request, tagging or releasing.
         type: boolean
@@ -137,8 +159,23 @@ jobs:
               print(f"Updated {path} ({count} match(es))")
           PY
 
+      - name: Set up Python ${{ inputs.python-version }}
+        if: inputs.version-command != ''
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ inputs.python-version }}
+
+      - name: Run the version command
+        if: inputs.version-command != ''
+        env:
+          VERSION: ${{ inputs.version }}
+          VERSION_COMMAND: ${{ inputs.version-command }}
+        run: eval "${VERSION_COMMAND}"
+
       - name: Show version file changes
-        run: git diff
+        run: |
+          git status --short
+          git diff
 
       - name: Open version pull request
         id: pr
@@ -251,13 +288,36 @@ jobs:
       ZULIP_SITE: ${{ secrets.ZULIP_SITE }}
 
     steps:
+      - name: Checkout the release tag
+        if: inputs.release-assets-command != ''
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.tag.outputs.tag }}
+
+      - name: Set up Python ${{ inputs.python-version }}
+        if: inputs.release-assets-command != ''
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ inputs.python-version }}
+
+      - name: Build release assets
+        if: inputs.release-assets-command != ''
+        env:
+          VERSION: ${{ inputs.version }}
+          RELEASE_ASSETS_COMMAND: ${{ inputs.release-assets-command }}
+        run: eval "${RELEASE_ASSETS_COMMAND}"
+
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ needs.tag.outputs.tag }}
           VERSION: ${{ inputs.version }}
-        run: gh release create "${TAG}" --verify-tag --title "v${VERSION}" --generate-notes
+          RELEASE_ASSETS: ${{ inputs.release-assets }}
+        run: |
+          read -r -a assets <<< "${RELEASE_ASSETS}"
+          gh release create "${TAG}" --verify-tag --title "v${VERSION}" --generate-notes "${assets[@]}"
 
       - name: Announce the release on Zulip
         if: env.ZULIP_SITE != '' && env.ZULIP_BOT_EMAIL != '' && env.ZULIP_BOT_API_KEY != ''

@@ -69,7 +69,7 @@ Callers pin a full commit SHA with the version in a trailing comment, so Renovat
 | `ci-pre-commit` | Run all pre-commit hooks | Nothing required |
 | `ci-conda-build` | Build a conda recipe without uploading it | Nothing required |
 | `ci-coveralls-finish` | Close a parallel Coveralls build | Run it after the coverage jobs |
-| `release-prepare` | Check the version, update version files through a merged pull request, tag and create the GitHub release | `version`, `contents` and `pull-requests` write, and `AUTO_PR_MERGE` when `version-files` is used. Optional `ZULIP_BOT_EMAIL`, `ZULIP_BOT_API_KEY` and `ZULIP_SITE` announce the release |
+| `release-prepare` | Check the version, update version files through a merged pull request, tag and create the GitHub release. `version-command` regenerates files that embed the version before the pull request opens, and `release-assets-command` with `release-assets` builds files from the tag and attaches them to the release | `version`, `contents` and `pull-requests` write, and `AUTO_PR_MERGE` when `version-files` is used. Optional `ZULIP_BOT_EMAIL`, `ZULIP_BOT_API_KEY` and `ZULIP_SITE` announce the release |
 | `release-website` | Send the release metadata to the website repository | `version`, `tag` and `BUILD_TOKEN` |
 | `release-pypi` | Build from the release tag and publish to PyPI | `tag` and `PYPI_API_TOKEN` |
 | `release-conda` | Build from the release tag and upload to Anaconda.org | `tag` and `ANACONDA_TOKEN` |
