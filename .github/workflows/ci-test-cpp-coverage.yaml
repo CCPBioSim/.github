@@ -141,7 +141,7 @@ jobs:
           python -m pytest "${extra_args[@]}" "${TEST_PATH}"
 
       - name: Upload coverage to Coveralls
-        uses: CCPBioSim/.github/actions/cpp-coverage-upload@edc3732fa8d31a58312ca784e65cad9bdfba9347 # 0.13.0
+        uses: CCPBioSim/.github/actions/cpp-coverage-upload@2bf63339f2515ec54777e952e8db3d8674d4e5ca # 0.14.0
         with:
           filters: ${{ inputs.filters }}
           flag-name: ${{ inputs.flag-name }}
